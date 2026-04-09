@@ -13,3 +13,9 @@ panel_group = app_commands.Group(
     description="公开面板管理",
     parent=ticket_group,
 )
+
+draft_group = app_commands.Group(
+    name="draft",
+    description="draft ticket 操作",
+    parent=ticket_group,
+)

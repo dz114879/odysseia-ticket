@@ -23,6 +23,7 @@ def make_ticket(
     created_at: str = "2024-01-01T00:00:00+00:00",
     updated_at: str = "2024-01-01T00:00:00+00:00",
     has_user_message: bool = False,
+    last_user_message_at: str | None = None,
     claimed_by: int | None = None,
     priority: TicketPriority = TicketPriority.MEDIUM,
 ) -> TicketRecord:
@@ -36,6 +37,7 @@ def make_ticket(
         created_at=created_at,
         updated_at=updated_at,
         has_user_message=has_user_message,
+        last_user_message_at=last_user_message_at,
         claimed_by=claimed_by,
         priority=priority,
     )
@@ -48,6 +50,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             channel_id=501,
             status=TicketStatus.SUBMITTED,
             has_user_message=True,
+            last_user_message_at="2024-01-01T01:00:00+00:00",
             claimed_by=999,
             priority=TicketPriority.HIGH,
         )
@@ -61,6 +64,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.status is TicketStatus.SUBMITTED
     assert loaded.priority is TicketPriority.HIGH
     assert loaded.has_user_message is True
+    assert loaded.last_user_message_at == "2024-01-01T01:00:00+00:00"
     assert repository.get_by_channel_id(501) == loaded
 
 
@@ -125,6 +129,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
             created_at="2030-01-01T00:00:00+00:00",
             updated_at="2024-02-01T00:00:00+00:00",
             has_user_message=True,
+            last_user_message_at="2024-02-01T01:00:00+00:00",
             claimed_by=42,
             priority=TicketPriority.EMERGENCY,
         )
@@ -135,12 +140,14 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         claimed_by=None,
         priority=TicketPriority.LOW,
         updated_at="2024-03-01T00:00:00+00:00",
+        last_user_message_at=None,
     )
 
     assert upserted.created_at == "2024-01-01T00:00:00+00:00"
     assert upserted.channel_id == 701
     assert upserted.status is TicketStatus.SUBMITTED
     assert upserted.has_user_message is True
+    assert upserted.last_user_message_at == "2024-02-01T01:00:00+00:00"
     assert upserted.claimed_by == 42
     assert upserted.priority is TicketPriority.EMERGENCY
 
@@ -150,6 +157,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.status is TicketStatus.SUBMITTED
     assert updated.claimed_by is None
     assert updated.priority is TicketPriority.LOW
+    assert updated.last_user_message_at is None
     assert updated.updated_at == "2024-03-01T00:00:00+00:00"
 
     assert repository.delete("ticket-100") is True

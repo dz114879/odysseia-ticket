@@ -131,3 +131,35 @@ def test_validate_panel_request_rejects_stale_nonce_and_disabled_category(
             message_id=9001,
             category_key="hidden",
         )
+
+
+def test_validate_panel_request_accepts_rotated_nonce_and_rejects_previous_nonce(
+    migrated_database,
+    validation_service: ValidationService,
+) -> None:
+    guild_repository = GuildRepository(migrated_database)
+    panel_repository = PanelRepository(migrated_database)
+    guild_repository.upsert_config(make_config())
+    guild_repository.upsert_category(make_category("support", is_enabled=True))
+    panel_repository.replace_active_panel(make_panel(nonce="nonce-before-refresh", message_id=9001))
+    panel_repository.update(
+        "panel-1",
+        nonce="nonce-after-refresh",
+        updated_at="2024-01-02T00:00:00+00:00",
+    )
+
+    with pytest.raises(StaleInteractionError, match="面板已过期"):
+        validation_service.validate_panel_request(
+            1,
+            nonce="nonce-before-refresh",
+            message_id=9001,
+            category_key="support",
+        )
+
+    validation = validation_service.validate_panel_request(
+        1,
+        nonce="nonce-after-refresh",
+        message_id=9001,
+        category_key="support",
+    )
+    assert validation.panel.nonce == "nonce-after-refresh"

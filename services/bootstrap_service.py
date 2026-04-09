@@ -14,6 +14,7 @@ from runtime.cooldowns import CooldownManager
 from runtime.debounce import DebounceManager
 from runtime.locks import LockManager
 from runtime.scheduler import BackgroundScheduler
+from services.draft_timeout_service import DraftTimeoutService
 from services.logging_service import LoggingService
 
 
@@ -28,6 +29,7 @@ class BootstrapResources:
     cooldown_manager: CooldownManager
     debounce_manager: DebounceManager
     cache: RuntimeCacheStore
+    draft_timeout_service: DraftTimeoutService
 
 
 class BootstrapService:
@@ -43,6 +45,7 @@ class BootstrapService:
         self.cooldown_manager: CooldownManager | None = None
         self.debounce_manager: DebounceManager | None = None
         self.cache: RuntimeCacheStore | None = None
+        self.draft_timeout_service: DraftTimeoutService | None = None
 
     async def bootstrap(self) -> BootstrapResources:
         if self.resources is not None:
@@ -63,6 +66,12 @@ class BootstrapService:
         self.cooldown_manager = CooldownManager()
         self.debounce_manager = DebounceManager(self.logging_service.child("debounce"))
         self.cache = RuntimeCacheStore()
+        self.draft_timeout_service = DraftTimeoutService(
+            self.database,
+            bot=self.bot,
+            lock_manager=self.lock_manager,
+            logger=self.logging_service.child("draft-timeout"),
+        )
 
         self.scheduler = BackgroundScheduler(
             interval_seconds=self.settings.scheduler_interval_seconds,
@@ -74,6 +83,10 @@ class BootstrapService:
             self._cleanup_cooldowns,
         )
         self.scheduler.register_handler("runtime.cleanup_cache", self._cleanup_cache)
+        self.scheduler.register_handler(
+            "ticket.draft_timeout_sweep",
+            self._run_draft_timeout_sweep,
+        )
         await self.scheduler.start()
 
         self.resources = BootstrapResources(
@@ -86,6 +99,7 @@ class BootstrapService:
             cooldown_manager=self.cooldown_manager,
             debounce_manager=self.debounce_manager,
             cache=self.cache,
+            draft_timeout_service=self.draft_timeout_service,
         )
 
         self.logging_service.log_local_info(
@@ -145,4 +159,15 @@ class BootstrapService:
             self.logging_service.log_local_debug(
                 "Removed %s expired cache entries.",
                 removed_count,
+            )
+
+    async def _run_draft_timeout_sweep(self) -> None:
+        if self.draft_timeout_service is None or self.logging_service is None:
+            return
+
+        outcomes = await self.draft_timeout_service.sweep_expired_drafts()
+        if outcomes:
+            self.logging_service.log_local_info(
+                "Processed %s expired draft ticket(s).",
+                len(outcomes),
             )

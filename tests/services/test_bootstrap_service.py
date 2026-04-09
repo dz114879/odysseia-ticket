@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import services.bootstrap_service as bootstrap_module
+from core.constants import CURRENT_SCHEMA_VERSION
 from services.bootstrap_service import BootstrapService
 
 
@@ -57,16 +58,18 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
     assert settings.sqlite_path.parent.exists() is True
     assert settings.log_file.parent.exists() is True
     assert resources.database.database_path == settings.sqlite_path
-    assert resources.migration_report.final_version == 1
+    assert resources.migration_report.final_version == CURRENT_SCHEMA_VERSION
     assert resources.scheduler.interval_seconds == 12
     assert resources.scheduler.handler_names == [
         "runtime.cleanup_locks",
         "runtime.cleanup_cooldowns",
         "runtime.cleanup_cache",
+        "ticket.draft_timeout_sweep",
     ]
     assert (bootstrap_module.STORAGE_DIR / "snapshots").exists() is True
     assert (bootstrap_module.STORAGE_DIR / "notes").exists() is True
     assert (bootstrap_module.STORAGE_DIR / "archives").exists() is True
+    assert resources.draft_timeout_service is not None
 
 
 @pytest.mark.asyncio

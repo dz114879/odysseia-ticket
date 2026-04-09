@@ -198,6 +198,22 @@ class PanelRepository(BaseRepository):
             ).fetchone()
         return self._row_to_record(row) if row is not None else None
 
+    def list_active_panels(
+        self,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[PanelRecord]:
+        with self.read_connection(connection) as current_connection:
+            rows = current_connection.execute(
+                """
+                SELECT *
+                FROM panels
+                WHERE is_active = 1
+                ORDER BY guild_id ASC, updated_at DESC, created_at DESC;
+                """
+            ).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
     def list_by_guild(
         self,
         guild_id: int,

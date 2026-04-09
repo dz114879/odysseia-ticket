@@ -153,8 +153,17 @@ _MIGRATION_V1_STATEMENTS = (
 )
 
 
+_MIGRATION_V2_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN last_user_message_at TEXT;",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
+
+
+def _migration_v2_add_draft_activity_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V2_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -170,6 +179,11 @@ MIGRATIONS = [
         version=1,
         name="create_base_schema",
         operation=_migration_v1_create_base_schema,
+    ),
+    Migration(
+        version=2,
+        name="add_draft_activity_tracking",
+        operation=_migration_v2_add_draft_activity_tracking,
     ),
 ]
 

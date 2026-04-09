@@ -160,21 +160,41 @@ async def test_create_panel_replaces_previous_active_panel(
 
 
 @pytest.mark.asyncio
-async def test_refresh_active_panel_keeps_nonce_and_updates_message(
+async def test_refresh_active_panel_rotates_nonce_and_invalidates_old_context(
     migrated_database,
     prepared_guild,
 ) -> None:
     _, channel = prepared_guild
     service = PanelService(migrated_database, bot=FakeBot(channel))
     created = await service.create_panel(channel, created_by=42)
+    previous_nonce = created.record.nonce
 
     refreshed = await service.refresh_active_panel(1)
+    stored = PanelRepository(migrated_database).get_active_panel(1)
 
     assert refreshed.record.panel_id == created.record.panel_id
     assert refreshed.record.message_id == created.record.message_id
-    assert refreshed.record.nonce == created.record.nonce
+    assert refreshed.record.nonce != previous_nonce
+    assert stored == refreshed.record
     assert refreshed.message.edited_payloads
-    assert refreshed.message.view.children[0].custom_id.endswith(created.record.nonce)
+    assert refreshed.message.view.children[0].custom_id.endswith(refreshed.record.nonce)
+
+    with pytest.raises(StaleInteractionError, match="面板已过期"):
+        service.preview_panel_request(
+            guild_id=1,
+            message_id=created.record.message_id,
+            nonce=previous_nonce,
+            category_key="support",
+        )
+
+    preview = service.preview_panel_request(
+        guild_id=1,
+        message_id=created.record.message_id,
+        nonce=refreshed.record.nonce,
+        category_key="support",
+    )
+    assert preview.panel.nonce == refreshed.record.nonce
+    assert preview.category.category_key == "support"
 
 
 @pytest.mark.asyncio

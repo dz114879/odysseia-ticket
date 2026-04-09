@@ -4,13 +4,18 @@ from typing import TYPE_CHECKING
 
 import discord
 
-from core.constants import CUSTOM_ID_SEPARATOR, PANEL_CUSTOM_ID_PREFIX
+from core.constants import (
+    CUSTOM_ID_SEPARATOR,
+    PANEL_CUSTOM_ID_PREFIX,
+    TICKET_CUSTOM_ID_PREFIX,
+)
 from core.errors import StaleInteractionError, ValidationError
 from core.models import TicketCategoryConfig
 from discord_ui.panel_embeds import build_panel_request_preview_embed
 
 if TYPE_CHECKING:
-    from services.panel_service import PanelSelectionPreview, PanelService
+    from services.creation_service import DraftCreationResult
+    from services.panel_service import PanelService
 
 
 def build_public_panel_custom_id(guild_id: int, nonce: str) -> str:
@@ -20,6 +25,92 @@ def build_public_panel_custom_id(guild_id: int, nonce: str) -> str:
         f"{CUSTOM_ID_SEPARATOR}{guild_id}"
         f"{CUSTOM_ID_SEPARATOR}{nonce}"
     )
+
+
+def build_draft_confirm_custom_id(guild_id: int, nonce: str, category_key: str) -> str:
+    return (
+        f"{TICKET_CUSTOM_ID_PREFIX}"
+        f"{CUSTOM_ID_SEPARATOR}draft-confirm"
+        f"{CUSTOM_ID_SEPARATOR}{guild_id}"
+        f"{CUSTOM_ID_SEPARATOR}{nonce}"
+        f"{CUSTOM_ID_SEPARATOR}{category_key}"
+    )
+
+
+class DraftCreateConfirmButton(discord.ui.Button):
+    def __init__(
+        self,
+        *,
+        guild_id: int,
+        nonce: str,
+        category: TicketCategoryConfig,
+        source_message_id: int,
+        panel_service: PanelService | None,
+    ) -> None:
+        super().__init__(
+            label="确认创建私密 Ticket",
+            style=discord.ButtonStyle.green,
+            custom_id=build_draft_confirm_custom_id(guild_id, nonce, category.category_key),
+        )
+        self.guild_id = guild_id
+        self.nonce = nonce
+        self.category = category
+        self.source_message_id = source_message_id
+        self.panel_service = panel_service
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if self.panel_service is None:
+            await interaction.response.send_message("Ticket 创建流程尚未完成接线。", ephemeral=True)
+            return
+
+        if interaction.guild is None:
+            await interaction.response.send_message("该交互只能在服务器中使用。", ephemeral=True)
+            return
+
+        try:
+            result = await self.panel_service.create_draft_from_panel_request(
+                guild=interaction.guild,
+                creator=interaction.user,
+                message_id=self.source_message_id,
+                nonce=self.nonce,
+                category_key=self.category.category_key,
+            )
+        except (StaleInteractionError, ValidationError) as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        except Exception:
+            await interaction.response.send_message(
+                "创建 draft ticket 失败，请稍后重试。",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.send_message(
+            _build_draft_creation_feedback(result),
+            ephemeral=True,
+        )
+
+
+class DraftCreateConfirmView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        guild_id: int,
+        nonce: str,
+        category: TicketCategoryConfig,
+        source_message_id: int,
+        panel_service: PanelService | None,
+    ) -> None:
+        super().__init__(timeout=300)
+        self.add_item(
+            DraftCreateConfirmButton(
+                guild_id=guild_id,
+                nonce=nonce,
+                category=category,
+                source_message_id=source_message_id,
+                panel_service=panel_service,
+            )
+        )
 
 
 class PanelCategorySelect(discord.ui.Select):
@@ -79,8 +170,34 @@ class PanelCategorySelect(discord.ui.Select):
 
         await interaction.response.send_message(
             embed=build_panel_request_preview_embed(preview.category),
+            view=DraftCreateConfirmView(
+                guild_id=self.guild_id,
+                nonce=self.nonce,
+                category=preview.category,
+                source_message_id=interaction.message.id,
+                panel_service=self.panel_service,
+            ),
             ephemeral=True,
         )
+
+
+def _build_draft_creation_feedback(result: DraftCreationResult) -> str:
+    channel = result.channel
+    channel_reference = getattr(channel, "mention", f"<#{getattr(channel, 'id', 'unknown')}>")
+
+    if result.created:
+        return (
+            "已为您创建私密 draft ticket。\n"
+            f"- 频道：{channel_reference}\n"
+            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+            "请进入频道发送第一条消息描述问题。"
+        )
+
+    return (
+        "您已有进行中的 draft ticket。\n"
+        f"- 频道：{channel_reference}\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`"
+    )
 
 
 class PublicPanelView(discord.ui.View):

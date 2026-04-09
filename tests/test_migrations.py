@@ -27,7 +27,7 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
 
     assert report.initial_version == 0
     assert report.final_version == CURRENT_SCHEMA_VERSION
-    assert report.applied_versions == [CURRENT_SCHEMA_VERSION]
+    assert report.applied_versions == list(range(1, CURRENT_SCHEMA_VERSION + 1))
 
     rows = database_manager.fetchall(
         "SELECT name FROM sqlite_master WHERE type = 'table';",
@@ -41,12 +41,16 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert version_row is not None
     assert version_row["version"] == CURRENT_SCHEMA_VERSION
 
+    ticket_columns = database_manager.fetchall("PRAGMA table_info(tickets);")
+    ticket_column_names = {row["name"] for row in ticket_columns}
+    assert "last_user_message_at" in ticket_column_names
+
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:
     first_report = apply_migrations(database_manager)
     second_report = apply_migrations(database_manager)
 
-    assert first_report.applied_versions == [CURRENT_SCHEMA_VERSION]
+    assert first_report.applied_versions == list(range(1, CURRENT_SCHEMA_VERSION + 1))
     assert second_report.initial_version == CURRENT_SCHEMA_VERSION
     assert second_report.final_version == CURRENT_SCHEMA_VERSION
     assert second_report.applied_versions == []
@@ -70,6 +74,11 @@ def test_apply_migrations_wraps_sqlite_errors(
         "MIGRATIONS",
         [Migration(version=1, name="broken", operation=broken_operation)],
     )
+    monkeypatch.setattr(
+        migrations_module,
+        "CURRENT_SCHEMA_VERSION",
+        1,
+    )
 
     with pytest.raises(DatabaseMigrationError, match="数据库迁移失败"):
         apply_migrations(database_manager)
@@ -89,6 +98,11 @@ def test_apply_migrations_rolls_back_partial_changes_on_failure(
         migrations_module,
         "MIGRATIONS",
         [Migration(version=1, name="partial_failure", operation=partially_failing_operation)],
+    )
+    monkeypatch.setattr(
+        migrations_module,
+        "CURRENT_SCHEMA_VERSION",
+        1,
     )
 
     with pytest.raises(DatabaseMigrationError, match="数据库迁移失败"):

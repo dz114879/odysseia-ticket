@@ -78,6 +78,24 @@ def test_replace_active_panel_deactivates_previous_panel(repository: PanelReposi
     assert repository.list_by_guild(1, active_only=True) == [replacement]
 
 
+def test_list_active_panels_returns_all_guild_active_records(repository: PanelRepository) -> None:
+    first = repository.replace_active_panel(
+        make_panel("panel-g1", guild_id=1, channel_id=101, message_id=11, nonce="nonce-g1")
+    )
+    second = repository.replace_active_panel(
+        make_panel("panel-g2", guild_id=2, channel_id=202, message_id=22, nonce="nonce-g2")
+    )
+    repository.create(
+        make_panel("panel-inactive", guild_id=3, channel_id=303, message_id=33, nonce="nonce-g3", is_active=False)
+    )
+
+    active_panels = repository.list_active_panels()
+
+    assert active_panels == [first, second]
+    assert [panel.guild_id for panel in active_panels] == [1, 2]
+    assert all(panel.is_active for panel in active_panels)
+
+
 def test_deactivate_upsert_update_and_delete_panel(repository: PanelRepository) -> None:
     repository.create(make_panel("panel-1", message_id=10, nonce="one", is_active=True))
     repository.create(

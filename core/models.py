@@ -16,6 +16,7 @@ class TicketRecord:
     created_at: str = ""
     updated_at: str = ""
     has_user_message: bool = False
+    last_user_message_at: str | None = None
     claimed_by: int | None = None
     priority: TicketPriority = TicketPriority.MEDIUM
 

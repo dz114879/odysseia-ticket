@@ -27,6 +27,7 @@ class TicketRepository(BaseRepository):
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             has_user_message=from_db_bool(row["has_user_message"]),
+            last_user_message_at=row["last_user_message_at"],
             claimed_by=row["claimed_by"],
             priority=TicketPriority(row["priority"]),
         )
@@ -53,10 +54,11 @@ class TicketRepository(BaseRepository):
                     created_at,
                     updated_at,
                     has_user_message,
+                    last_user_message_at,
                     claimed_by,
                     priority
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -68,6 +70,7 @@ class TicketRepository(BaseRepository):
                     created_at,
                     updated_at,
                     to_db_bool(record.has_user_message),
+                    record.last_user_message_at,
                     record.claimed_by,
                     record.priority.value,
                 ),
@@ -82,6 +85,7 @@ class TicketRepository(BaseRepository):
             created_at=created_at,
             updated_at=updated_at,
             has_user_message=record.has_user_message,
+            last_user_message_at=record.last_user_message_at,
             claimed_by=record.claimed_by,
             priority=record.priority,
         )
@@ -108,10 +112,11 @@ class TicketRepository(BaseRepository):
                     created_at,
                     updated_at,
                     has_user_message,
+                    last_user_message_at,
                     claimed_by,
                     priority
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -120,6 +125,7 @@ class TicketRepository(BaseRepository):
                     status = excluded.status,
                     updated_at = excluded.updated_at,
                     has_user_message = excluded.has_user_message,
+                    last_user_message_at = excluded.last_user_message_at,
                     claimed_by = excluded.claimed_by,
                     priority = excluded.priority;
                 """,
@@ -133,6 +139,7 @@ class TicketRepository(BaseRepository):
                     created_at,
                     updated_at,
                     to_db_bool(record.has_user_message),
+                    record.last_user_message_at,
                     record.claimed_by,
                     record.priority.value,
                 ),
@@ -147,6 +154,7 @@ class TicketRepository(BaseRepository):
             created_at=created_at,
             updated_at=updated_at,
             has_user_message=record.has_user_message,
+            last_user_message_at=record.last_user_message_at,
             claimed_by=record.claimed_by,
             priority=record.priority,
         )
@@ -206,6 +214,27 @@ class TicketRepository(BaseRepository):
             rows = current_connection.execute(query, parameters).fetchall()
         return [self._row_to_record(row) for row in rows]
 
+    def list_by_statuses(
+        self,
+        statuses: Sequence[TicketStatus],
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[TicketRecord]:
+        if not statuses:
+            return []
+
+        placeholders = ", ".join("?" for _ in statuses)
+        parameters = [status.value for status in statuses]
+        query = (
+            "SELECT * FROM tickets "
+            f"WHERE status IN ({placeholders}) "
+            "ORDER BY created_at ASC;"
+        )
+
+        with self.read_connection(connection) as current_connection:
+            rows = current_connection.execute(query, parameters).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
     def update(
         self,
         ticket_id: str,
@@ -218,6 +247,7 @@ class TicketRepository(BaseRepository):
         created_at: str | object = UNSET,
         updated_at: str | object = UNSET,
         has_user_message: bool | object = UNSET,
+        last_user_message_at: str | None | object = UNSET,
         claimed_by: int | None | object = UNSET,
         priority: TicketPriority | object = UNSET,
         connection: sqlite3.Connection | None = None,
@@ -238,6 +268,8 @@ class TicketRepository(BaseRepository):
             updates["created_at"] = created_at
         if has_user_message is not UNSET:
             updates["has_user_message"] = to_db_bool(bool(has_user_message))
+        if last_user_message_at is not UNSET:
+            updates["last_user_message_at"] = last_user_message_at
         if claimed_by is not UNSET:
             updates["claimed_by"] = claimed_by
         if priority is not UNSET:

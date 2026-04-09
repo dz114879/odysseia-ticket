@@ -34,7 +34,7 @@ def build_panel_request_preview_embed(category: TicketCategoryConfig) -> discord
         title=f"已选择分类：{category.display_name}",
         description=(
             "当前请求已通过入口预校验。\n"
-            "建单确认与频道创建流程会在下一阶段接入，这里先保留最小确认骨架。"
+            "请点击下方按钮创建一个仅您与机器人可见的私密 draft ticket 频道。"
         ),
         color=discord.Color.green(),
     )
@@ -42,6 +42,7 @@ def build_panel_request_preview_embed(category: TicketCategoryConfig) -> discord
         embed.add_field(name="分类说明", value=category.description, inline=False)
     if category.extra_welcome_text:
         embed.add_field(name="提交前提示", value=category.extra_welcome_text, inline=False)
+    embed.add_field(name="下一步", value="确认创建后，请在 draft 频道发送第一条消息。", inline=False)
     return embed
 
 

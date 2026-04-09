@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
+from typing import Any
 
 import discord
 from discord.ext import commands
 
 from config.env import EnvSettings, load_env_settings
 from config.static import APP_NAME, BASE_DIR
-from core.errors import ConfigurationError
+from core.errors import ConfigurationError, ValidationError
 from services.bootstrap_service import BootstrapResources, BootstrapService
+from services.panel_service import PanelService
 
 
 class TicketBot(commands.Bot):
@@ -20,21 +21,32 @@ class TicketBot(commands.Bot):
         intents.messages = True
         intents.message_content = True
 
-        super().__init__(
-            command_prefix=settings.bot_prefix,
-            intents=intents,
-            application_id=settings.application_id,
-        )
+        bot_kwargs = self._build_bot_kwargs(settings=settings, intents=intents)
+        super().__init__(**bot_kwargs)
         self.settings = settings
         self.bootstrap_service = BootstrapService(settings=settings, bot=self)
         self.resources: BootstrapResources | None = None
 
+    @staticmethod
+    def _build_bot_kwargs(
+        *, settings: EnvSettings, intents: discord.Intents
+    ) -> dict[str, Any]:
+        bot_kwargs: dict[str, Any] = {
+            "command_prefix": settings.bot_prefix,
+            "intents": intents,
+        }
+        if settings.application_id is not None:
+            bot_kwargs["application_id"] = settings.application_id
+        return bot_kwargs
+
     async def setup_hook(self) -> None:
         self.resources = await self.bootstrap_service.bootstrap()
         await self._load_extensions()
+        await self._restore_active_panel_views()
 
         if self.settings.auto_sync_commands:
             synced_commands = await self.tree.sync()
+
             self.resources.logging_service.log_local_info(
                 "Application commands synced: %s",
                 len(synced_commands),
@@ -55,6 +67,19 @@ class TicketBot(commands.Bot):
             user_text,
             user_id,
         )
+
+        outcomes = await self.resources.draft_timeout_service.sweep_expired_drafts()
+        if outcomes:
+            self.resources.logging_service.log_local_info(
+                "Recovered %s expired draft ticket(s) on ready.",
+                len(outcomes),
+            )
+
+    async def on_message(self, message: discord.Message) -> None:
+        if self.resources is not None:
+            await self.resources.draft_timeout_service.handle_message(message)
+
+        await self.process_commands(message)
 
     async def _load_extensions(self) -> None:
         cogs_dir = BASE_DIR / "cogs"
@@ -77,6 +102,34 @@ class TicketBot(commands.Bot):
                     "Loaded extension: %s",
                     extension_name,
                 )
+
+    async def _restore_active_panel_views(self) -> int:
+        if self.resources is None:
+            return 0
+
+        panel_service = PanelService(self.resources.database, bot=self)
+        restored_count = 0
+
+        for panel in panel_service.list_active_panels():
+            try:
+                view = panel_service.build_persistent_public_panel_view(panel)
+            except ValidationError as exc:
+                self.resources.logging_service.log_local_warning(
+                    "Skipped restoring active panel view. guild_id=%s panel_id=%s reason=%s",
+                    panel.guild_id,
+                    panel.panel_id,
+                    exc,
+                )
+                continue
+
+            self.add_view(view, message_id=panel.message_id)
+            restored_count += 1
+
+        self.resources.logging_service.log_local_info(
+            "Restored %s active panel persistent view(s).",
+            restored_count,
+        )
+        return restored_count
 
 
 async def main() -> None:

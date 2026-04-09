@@ -13,6 +13,7 @@ from db.repositories.base import utc_now_iso
 from db.repositories.panel_repository import PanelRepository
 from discord_ui.panel_embeds import build_public_panel_embed
 from discord_ui.public_panel_view import PublicPanelView
+from services.creation_service import CreationService, DraftCreationResult
 from services.validation_service import ValidationService
 
 
@@ -42,14 +43,43 @@ class PanelService:
         bot: commands.Bot | None = None,
         panel_repository: PanelRepository | None = None,
         validation_service: ValidationService | None = None,
+        creation_service: CreationService | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
         self.panel_repository = panel_repository or PanelRepository(database)
         self.validation_service = validation_service or ValidationService(database)
+        bot_resources = getattr(bot, "resources", None) if bot is not None else None
+        lock_manager = getattr(bot_resources, "lock_manager", None)
+        self.creation_service = creation_service or CreationService(
+            database,
+            validation_service=self.validation_service,
+            lock_manager=lock_manager,
+        )
 
     def get_active_panel(self, guild_id: int) -> PanelRecord | None:
         return self.panel_repository.get_active_panel(guild_id)
+
+    def list_active_panels(self) -> list[PanelRecord]:
+        return self.panel_repository.list_active_panels()
+
+    def build_public_panel_view(
+        self,
+        *,
+        guild_id: int,
+        nonce: str,
+        categories: list[TicketCategoryConfig],
+    ) -> PublicPanelView:
+        return PublicPanelView(
+            guild_id=guild_id,
+            nonce=nonce,
+            categories=categories,
+            panel_service=self,
+        )
+
+    def build_persistent_public_panel_view(self, panel: PanelRecord) -> PublicPanelView:
+        _, categories = self.validation_service.assert_panel_creation_ready(panel.guild_id)
+        return self.build_public_panel_view(guild_id=panel.guild_id, nonce=panel.nonce, categories=categories)
 
     def preview_panel_request(
         self,
@@ -70,6 +100,23 @@ class PanelService:
             panel=validation.panel,
         )
 
+    async def create_draft_from_panel_request(
+        self,
+        *,
+        guild: Any,
+        creator: Any,
+        message_id: int,
+        nonce: str,
+        category_key: str,
+    ) -> DraftCreationResult:
+        return await self.creation_service.create_draft_ticket(
+            guild=guild,
+            creator=creator,
+            category_key=category_key,
+            source_panel_message_id=message_id,
+            source_panel_nonce=nonce,
+        )
+
     async def create_panel(
         self,
         channel: Any,
@@ -82,12 +129,7 @@ class PanelService:
 
         message = await channel.send(
             embed=build_public_panel_embed(categories),
-            view=PublicPanelView(
-                guild_id=guild_id,
-                nonce=nonce,
-                categories=categories,
-                panel_service=self,
-            ),
+            view=self.build_public_panel_view(guild_id=guild_id, nonce=nonce, categories=categories),
         )
         record = self.panel_repository.replace_active_panel(
             PanelRecord(
@@ -108,20 +150,32 @@ class PanelService:
         active_panel = self._require_active_panel(guild_id)
         _, categories = self.validation_service.assert_panel_creation_ready(guild_id)
         message = await self._resolve_message(active_panel)
+        refreshed_nonce = self.generate_panel_nonce()
 
         await message.edit(
             embed=build_public_panel_embed(categories),
-            view=PublicPanelView(
+            view=self.build_public_panel_view(
                 guild_id=guild_id,
-                nonce=active_panel.nonce,
+                nonce=refreshed_nonce,
                 categories=categories,
-                panel_service=self,
             ),
         )
+        refreshed_at = utc_now_iso()
         updated_record = self.panel_repository.update(
             active_panel.panel_id,
-            updated_at=utc_now_iso(),
-        ) or active_panel
+            nonce=refreshed_nonce,
+            updated_at=refreshed_at,
+        ) or PanelRecord(
+            panel_id=active_panel.panel_id,
+            guild_id=active_panel.guild_id,
+            channel_id=active_panel.channel_id,
+            message_id=active_panel.message_id,
+            nonce=refreshed_nonce,
+            is_active=active_panel.is_active,
+            created_by=active_panel.created_by,
+            created_at=active_panel.created_at,
+            updated_at=refreshed_at,
+        )
         return PanelPublishResult(record=updated_record, message=message)
 
     async def remove_active_panel(
