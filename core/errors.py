@@ -22,5 +22,9 @@ class PermissionDeniedError(TicketBotError):
     """调用者没有执行目标操作的权限。"""
 
 
+class ValidationError(TicketBotError):
+    """运行时配置或交互前置校验失败。"""
+
+
 class StaleInteractionError(TicketBotError):
     """交互已过期或对应组件已失效。"""
