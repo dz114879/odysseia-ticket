@@ -19,14 +19,8 @@ from db.connection import DatabaseManager
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
+from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_panel_service import StaffPanelService
-
-
-@dataclass(frozen=True, slots=True)
-class StaffTicketContext:
-    ticket: TicketRecord
-    config: GuildConfigRecord
-    category: TicketCategoryConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +41,7 @@ class ClaimService:
         guild_repository: GuildRepository | None = None,
         ticket_repository: TicketRepository | None = None,
         lock_manager: LockManager | None = None,
+        guard_service: StaffGuardService | None = None,
         staff_panel_service: StaffPanelService | None = None,
     ) -> None:
         self.database = database
@@ -54,6 +49,11 @@ class ClaimService:
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.lock_manager = lock_manager
         self.staff_panel_service = staff_panel_service
+        self.guard_service = guard_service or StaffGuardService(
+            database,
+            guild_repository=self.guild_repository,
+            ticket_repository=self.ticket_repository,
+        )
 
     async def claim_ticket(
         self,
@@ -192,21 +192,11 @@ class ClaimService:
             )
 
     def _load_ticket_context(self, channel_id: int) -> StaffTicketContext:
-        ticket = self.ticket_repository.get_by_channel_id(channel_id)
-        if ticket is None:
-            raise TicketNotFoundError("当前频道不是已登记的 ticket。")
-        if ticket.status is not TicketStatus.SUBMITTED:
-            raise InvalidTicketStateError("当前 ticket 不处于 submitted 状态，无法执行此操作。")
-
-        config = self.guild_repository.get_config(ticket.guild_id)
-        if config is None or not config.is_initialized:
-            raise ValidationError("当前服务器尚未完成 Ticket setup，无法执行 staff 操作。")
-
-        category = self.guild_repository.get_category(ticket.guild_id, ticket.category_key)
-        if category is None:
-            raise ValidationError("当前 ticket 所属分类配置不存在，请先修复服务器配置。")
-
-        return StaffTicketContext(ticket=ticket, config=config, category=category)
+        return self.guard_service.load_ticket_context(
+            channel_id,
+            allowed_statuses=(TicketStatus.SUBMITTED,),
+            invalid_state_message="当前 ticket 不处于 submitted 状态，无法执行此操作。",
+        )
 
     def _assert_staff_actor(
         self,
@@ -216,14 +206,12 @@ class ClaimService:
         category: TicketCategoryConfig,
         is_bot_owner: bool,
     ) -> None:
-        if self._is_staff_actor(
+        self.guard_service.assert_staff_actor(
             actor,
             config=config,
             category=category,
             is_bot_owner=is_bot_owner,
-        ):
-            return
-        raise PermissionDeniedError("只有当前分类 staff、Ticket 管理员或 Bot 所有者可以执行此操作。")
+        )
 
     def _is_staff_actor(
         self,
@@ -233,35 +221,21 @@ class ClaimService:
         category: TicketCategoryConfig,
         is_bot_owner: bool,
     ) -> bool:
-        if self._is_ticket_admin(actor, config=config, is_bot_owner=is_bot_owner):
-            return True
+        return self.guard_service.is_staff_actor(
+            actor,
+            config=config,
+            category=category,
+            is_bot_owner=is_bot_owner,
+        )
 
-        actor_id = getattr(actor, "id", None)
-        if actor_id is None:
-            return False
-        if actor_id in set(self._parse_staff_user_ids(category.staff_user_ids_json)):
-            return True
-
-        actor_role_ids = self._extract_role_ids(getattr(actor, "roles", []))
-        return category.staff_role_id is not None and category.staff_role_id in actor_role_ids
-
-    @staticmethod
     def _is_ticket_admin(
+        self,
         actor: Any,
         *,
         config: GuildConfigRecord,
         is_bot_owner: bool,
     ) -> bool:
-        if is_bot_owner:
-            return True
-
-        permissions = getattr(actor, "guild_permissions", None)
-        if permissions is not None and getattr(permissions, "administrator", False):
-            return True
-
-        if config.admin_role_id is None:
-            return False
-        return config.admin_role_id in ClaimService._extract_role_ids(getattr(actor, "roles", []))
+        return self.guard_service.is_ticket_admin(actor, config=config, is_bot_owner=is_bot_owner)
 
     async def _sync_staff_permissions(
         self,
