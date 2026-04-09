@@ -26,6 +26,7 @@ def make_ticket(
     last_user_message_at: str | None = None,
     claimed_by: int | None = None,
     priority: TicketPriority = TicketPriority.MEDIUM,
+    staff_panel_message_id: int | None = None,
 ) -> TicketRecord:
     return TicketRecord(
         ticket_id=ticket_id,
@@ -40,6 +41,7 @@ def make_ticket(
         last_user_message_at=last_user_message_at,
         claimed_by=claimed_by,
         priority=priority,
+        staff_panel_message_id=staff_panel_message_id,
     )
 
 
@@ -52,6 +54,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             has_user_message=True,
             last_user_message_at="2024-01-01T01:00:00+00:00",
             claimed_by=999,
+            staff_panel_message_id=3333,
             priority=TicketPriority.HIGH,
         )
     )
@@ -65,6 +68,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.priority is TicketPriority.HIGH
     assert loaded.has_user_message is True
     assert loaded.last_user_message_at == "2024-01-01T01:00:00+00:00"
+    assert loaded.staff_panel_message_id == 3333
     assert repository.get_by_channel_id(501) == loaded
 
 
@@ -140,6 +144,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         claimed_by=None,
         priority=TicketPriority.LOW,
         updated_at="2024-03-01T00:00:00+00:00",
+        staff_panel_message_id=8080,
         last_user_message_at=None,
     )
 
@@ -158,6 +163,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.claimed_by is None
     assert updated.priority is TicketPriority.LOW
     assert updated.last_user_message_at is None
+    assert updated.staff_panel_message_id == 8080
     assert updated.updated_at == "2024-03-01T00:00:00+00:00"
 
     assert repository.delete("ticket-100") is True

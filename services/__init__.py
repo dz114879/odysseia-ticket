@@ -1,22 +1,7 @@
-from .bootstrap_service import BootstrapResources, BootstrapService
-from .guild_config_service import GuildConfigService, GuildConfigSnapshot
-from .logging_service import LoggingService
-from .panel_service import PanelPublishResult, PanelRemovalResult, PanelSelectionPreview, PanelService
-from .setup_service import SetupResult, SetupService
-from .validation_service import PanelSelectionValidation, ValidationService
+"""Service layer package.
 
-__all__ = [
-    "BootstrapResources",
-    "BootstrapService",
-    "PanelService",
-    "PanelPublishResult",
-    "PanelRemovalResult",
-    "PanelSelectionPreview",
-    "LoggingService",
-    "GuildConfigService",
-    "GuildConfigSnapshot",
-    "SetupService",
-    "SetupResult",
-    "ValidationService",
-    "PanelSelectionValidation",
-]
+保持 package init 轻量，避免在导入子模块时触发额外的循环依赖。
+需要具体服务时请直接从 `services.<module>` 导入。
+"""
+
+__all__: list[str] = []

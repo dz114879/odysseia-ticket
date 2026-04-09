@@ -44,6 +44,7 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     ticket_columns = database_manager.fetchall("PRAGMA table_info(tickets);")
     ticket_column_names = {row["name"] for row in ticket_columns}
     assert "last_user_message_at" in ticket_column_names
+    assert "staff_panel_message_id" in ticket_column_names
 
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:

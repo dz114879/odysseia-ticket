@@ -158,12 +158,21 @@ _MIGRATION_V2_STATEMENTS = (
 )
 
 
+_MIGRATION_V3_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN staff_panel_message_id INTEGER;",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
 
 def _migration_v2_add_draft_activity_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V2_STATEMENTS)
+
+
+def _migration_v3_add_staff_panel_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V3_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -184,6 +193,11 @@ MIGRATIONS = [
         version=2,
         name="add_draft_activity_tracking",
         operation=_migration_v2_add_draft_activity_tracking,
+    ),
+    Migration(
+        version=3,
+        name="add_staff_panel_tracking",
+        operation=_migration_v3_add_staff_panel_tracking,
     ),
 ]
 

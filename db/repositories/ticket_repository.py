@@ -30,6 +30,7 @@ class TicketRepository(BaseRepository):
             last_user_message_at=row["last_user_message_at"],
             claimed_by=row["claimed_by"],
             priority=TicketPriority(row["priority"]),
+            staff_panel_message_id=row["staff_panel_message_id"],
         )
 
     def create(
@@ -56,9 +57,10 @@ class TicketRepository(BaseRepository):
                     has_user_message,
                     last_user_message_at,
                     claimed_by,
-                    priority
+                    priority,
+                    staff_panel_message_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -73,6 +75,7 @@ class TicketRepository(BaseRepository):
                     record.last_user_message_at,
                     record.claimed_by,
                     record.priority.value,
+                    record.staff_panel_message_id,
                 ),
             )
         return TicketRecord(
@@ -88,6 +91,7 @@ class TicketRepository(BaseRepository):
             last_user_message_at=record.last_user_message_at,
             claimed_by=record.claimed_by,
             priority=record.priority,
+            staff_panel_message_id=record.staff_panel_message_id,
         )
 
     def upsert(
@@ -114,9 +118,10 @@ class TicketRepository(BaseRepository):
                     has_user_message,
                     last_user_message_at,
                     claimed_by,
-                    priority
+                    priority,
+                    staff_panel_message_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -127,7 +132,8 @@ class TicketRepository(BaseRepository):
                     has_user_message = excluded.has_user_message,
                     last_user_message_at = excluded.last_user_message_at,
                     claimed_by = excluded.claimed_by,
-                    priority = excluded.priority;
+                    priority = excluded.priority,
+                    staff_panel_message_id = excluded.staff_panel_message_id;
                 """,
                 (
                     record.ticket_id,
@@ -142,6 +148,7 @@ class TicketRepository(BaseRepository):
                     record.last_user_message_at,
                     record.claimed_by,
                     record.priority.value,
+                    record.staff_panel_message_id,
                 ),
             )
         return self.get_by_ticket_id(record.ticket_id, connection=connection) or TicketRecord(
@@ -157,6 +164,7 @@ class TicketRepository(BaseRepository):
             last_user_message_at=record.last_user_message_at,
             claimed_by=record.claimed_by,
             priority=record.priority,
+            staff_panel_message_id=record.staff_panel_message_id,
         )
 
     def get_by_ticket_id(
@@ -250,6 +258,7 @@ class TicketRepository(BaseRepository):
         last_user_message_at: str | None | object = UNSET,
         claimed_by: int | None | object = UNSET,
         priority: TicketPriority | object = UNSET,
+        staff_panel_message_id: int | None | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> TicketRecord | None:
         updates: dict[str, object] = {}
@@ -274,6 +283,8 @@ class TicketRepository(BaseRepository):
             updates["claimed_by"] = claimed_by
         if priority is not UNSET:
             updates["priority"] = priority.value
+        if staff_panel_message_id is not UNSET:
+            updates["staff_panel_message_id"] = staff_panel_message_id
 
         if updated_at is not UNSET:
             updates["updated_at"] = updated_at

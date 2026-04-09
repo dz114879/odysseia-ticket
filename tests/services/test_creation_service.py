@@ -36,10 +36,11 @@ class FakeCategoryChannel:
 
 
 class FakeMessage:
-    def __init__(self, message_id: int, channel: "FakeTextChannel", *, content: str) -> None:
+    def __init__(self, message_id: int, channel: "FakeTextChannel", *, content: str, view=None) -> None:
         self.id = message_id
         self.channel = channel
         self.content = content
+        self.view = view
         self.pinned = False
 
     async def pin(self, *, reason: str | None = None) -> None:
@@ -70,8 +71,8 @@ class FakeTextChannel:
     def mention(self) -> str:
         return f"<#{self.id}>"
 
-    async def send(self, *, content: str) -> FakeMessage:
-        message = FakeMessage(1000 + len(self.messages), self, content=content)
+    async def send(self, *, content: str, view=None) -> FakeMessage:
+        message = FakeMessage(1000 + len(self.messages), self, content=content, view=view)
         self.messages.append(message)
         return message
 
@@ -222,6 +223,7 @@ async def test_create_draft_ticket_happy_path_persists_ticket_and_private_channe
     assert channel.overwrites[guild.me].view_channel is True
     assert result.welcome_message is not None
     assert result.welcome_message.pinned is True
+    assert result.welcome_message.view is not None
     assert "技术支持" in result.welcome_message.content
     assert "请描述复现步骤。" in result.welcome_message.content
     assert counter is not None

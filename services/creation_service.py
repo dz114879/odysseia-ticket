@@ -14,6 +14,7 @@ from db.connection import DatabaseManager
 from db.repositories.counter_repository import CounterRepository
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
+from discord_ui.draft_views import DraftWelcomeView
 from runtime.locks import LockManager
 from services.validation_service import ValidationService
 
@@ -111,7 +112,8 @@ class CreationService:
                         creator_id=creator.id,
                         ticket_id=ticket_id,
                         category=category,
-                    )
+                    ),
+                    view=DraftWelcomeView(),
                 )
                 await self._pin_welcome_message(welcome_message)
                 ticket = self.ticket_repository.create(
@@ -283,7 +285,8 @@ class CreationService:
             f"- Ticket ID：`{ticket_id}`",
             f"- 分类：{category.display_name}",
             "- 当前阶段：draft（暂不对 staff 开放）",
-            "请直接在此频道发送第一条消息描述问题，后续提交流程会在下一阶段接入。",
+            "请直接在此频道发送第一条消息描述问题。",
+            "准备好后可点击下方“提交给 Staff”按钮，或使用 `/ticket submit` 提交。",
         ]
         if category.extra_welcome_text:
             lines.append(f"补充提示：{category.extra_welcome_text}")

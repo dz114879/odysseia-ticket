@@ -9,7 +9,8 @@ from config.defaults import (
     DEFAULT_PANEL_FOOTER_TEXT,
     DEFAULT_PANEL_TITLE,
 )
-from core.models import TicketCategoryConfig
+from core.enums import ClaimMode, TicketPriority, TicketStatus
+from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 
 
 def build_public_panel_embed(categories: list[TicketCategoryConfig]) -> discord.Embed:
@@ -46,6 +47,44 @@ def build_panel_request_preview_embed(category: TicketCategoryConfig) -> discord
     return embed
 
 
+def build_staff_control_panel_embed(
+    ticket: TicketRecord,
+    *,
+    category: TicketCategoryConfig,
+    config: GuildConfigRecord | None = None,
+) -> discord.Embed:
+    embed = discord.Embed(
+        title="🛠️ Staff 控制面板",
+        description=_build_staff_panel_description(ticket, config=config),
+        color=discord.Color.gold(),
+    )
+    embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)
+    embed.add_field(name="状态", value=_format_status_label(ticket.status), inline=True)
+    embed.add_field(name="优先级", value=_format_priority_label(ticket.priority), inline=True)
+    embed.add_field(name="认领模式", value=_format_claim_mode_label(config.claim_mode if config else None), inline=True)
+    embed.add_field(name="分类", value=category.display_name, inline=True)
+    embed.add_field(name="创建者", value=f"<@{ticket.creator_id}>", inline=True)
+    embed.add_field(name="当前认领者", value=_format_claimer(ticket.claimed_by), inline=True)
+    embed.add_field(name="最近用户消息", value=ticket.last_user_message_at or "暂无", inline=False)
+    embed.add_field(name="创建时间", value=ticket.created_at or "未知", inline=False)
+    embed.set_footer(text="claim / unclaim / priority / help 已接入；更多 staff 面板动作将在后续阶段补齐。")
+    return embed
+
+
+def _build_staff_panel_description(
+    ticket: TicketRecord,
+    *,
+    config: GuildConfigRecord | None,
+) -> str:
+    description = "当前 ticket 已提交，可通过 staff 命令继续处理。"
+    if config is None:
+        return description
+
+    if config.claim_mode is ClaimMode.STRICT and ticket.claimed_by is None:
+        return f"{description}\n当前为 strict claim mode，未认领前 staff 默认仅可见不可发言。"
+    return f"{description}\n当前 claim mode：{_format_claim_mode_label(config.claim_mode)}。"
+
+
 def _format_category_lines(categories: list[TicketCategoryConfig]) -> str:
     if not categories:
         return "当前没有可用分类。"
@@ -56,3 +95,47 @@ def _format_category_lines(categories: list[TicketCategoryConfig]) -> str:
         description = category.description or "暂无描述"
         lines.append(f"{prefix}**{category.display_name}**：{description}")
     return "\n".join(lines)
+
+
+def _format_priority_label(priority: TicketPriority) -> str:
+    labels = {
+        TicketPriority.LOW: "低 🟢",
+        TicketPriority.MEDIUM: "中 🟡",
+        TicketPriority.HIGH: "高 🔴",
+        TicketPriority.EMERGENCY: "紧急 ‼️",
+        TicketPriority.SLEEP: "挂起 💤",
+    }
+    return labels.get(priority, priority.value)
+
+
+def _format_claim_mode_label(claim_mode: ClaimMode | None) -> str:
+    labels = {
+        ClaimMode.RELAXED: "relaxed 协作模式",
+        ClaimMode.STRICT: "strict 严格认领",
+        None: "未知",
+    }
+    return labels.get(claim_mode, getattr(claim_mode, "value", "未知"))
+
+
+def _format_status_label(status: TicketStatus) -> str:
+    labels = {
+        TicketStatus.DRAFT: "draft 草稿",
+        TicketStatus.QUEUED: "queued 排队中",
+        TicketStatus.SUBMITTED: "submitted 处理中",
+        TicketStatus.SLEEP: "sleep 挂起中",
+        TicketStatus.TRANSFERRING: "transferring 转交中",
+        TicketStatus.CLOSING: "closing 关闭中",
+        TicketStatus.ARCHIVING: "archiving 归档中",
+        TicketStatus.ARCHIVE_SENT: "archive_sent 已发送",
+        TicketStatus.ARCHIVE_FAILED: "archive_failed 发送失败",
+        TicketStatus.CHANNEL_DELETED: "channel_deleted 频道已删除",
+        TicketStatus.DONE: "done 已完成",
+        TicketStatus.ABANDONED: "abandoned 已放弃",
+    }
+    return labels.get(status, status.value)
+
+
+def _format_claimer(claimer_id: int | None) -> str:
+    if claimer_id is None:
+        return "未认领"
+    return f"<@{claimer_id}>"

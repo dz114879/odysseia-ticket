@@ -1,0 +1,216 @@
+from __future__ import annotations
+
+from typing import Any
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from cogs.ticket_command_groups import ticket_group
+from core.enums import TicketPriority
+from core.errors import (
+    InvalidTicketStateError,
+    PermissionDeniedError,
+    TicketNotFoundError,
+    ValidationError,
+)
+from discord_ui.help_text import build_ticket_help_message
+from discord_ui.staff_feedback import (
+    build_claim_success_message, build_priority_success_message, build_unclaim_success_message,
+)
+from discord_ui.staff_panel_view import StaffPanelView
+from services.claim_service import ClaimService
+from services.priority_service import PriorityService
+from services.staff_panel_service import StaffPanelService
+
+
+class StaffCog(commands.Cog):
+    def __init__(self, bot: commands.Bot) -> None:
+        resources = getattr(bot, "resources", None)
+        if resources is None:
+            raise RuntimeError("Bot resources 尚未初始化，无法加载 StaffCog。")
+
+        self.bot = bot
+        self.logging_service = resources.logging_service
+        self.staff_panel_service = StaffPanelService(
+            resources.database,
+            bot=bot,
+            debounce_manager=getattr(resources, "debounce_manager", None),
+        )
+        self.claim_service = ClaimService(
+            resources.database,
+            lock_manager=getattr(resources, "lock_manager", None),
+            staff_panel_service=self.staff_panel_service,
+        )
+        self.priority_service = PriorityService(
+            resources.database,
+            lock_manager=getattr(resources, "lock_manager", None),
+            staff_panel_service=self.staff_panel_service,
+        )
+
+        if not getattr(bot, "_staff_panel_view_registered", False):
+            bot.add_view(StaffPanelView())
+            setattr(bot, "_staff_panel_view_registered", True)
+
+    @ticket_group.command(name="claim", description="认领当前 submitted ticket")
+    @app_commands.guild_only()
+    async def claim_command(self, interaction: discord.Interaction) -> None:
+        await self.claim_current_ticket(interaction)
+
+    @ticket_group.command(name="unclaim", description="取消认领当前 submitted ticket")
+    @app_commands.guild_only()
+    async def unclaim_command(self, interaction: discord.Interaction) -> None:
+        await self.unclaim_current_ticket(interaction)
+
+    @ticket_group.command(name="priority", description="修改当前 submitted ticket 的优先级")
+    @app_commands.guild_only()
+    @app_commands.describe(priority="要设置的 ticket 优先级")
+    @app_commands.choices(
+        priority=[
+            app_commands.Choice(name="低 🟢", value=TicketPriority.LOW.value),
+            app_commands.Choice(name="中 🟡", value=TicketPriority.MEDIUM.value),
+            app_commands.Choice(name="高 🔴", value=TicketPriority.HIGH.value),
+            app_commands.Choice(name="紧急 ‼️", value=TicketPriority.EMERGENCY.value),
+        ]
+    )
+    async def priority_command(
+        self,
+        interaction: discord.Interaction,
+        priority: app_commands.Choice[str],
+    ) -> None:
+        await self.set_current_ticket_priority(interaction, priority=TicketPriority(priority.value))
+
+    @ticket_group.command(name="help", description="查看当前 ticket 工作流帮助")
+    @app_commands.guild_only()
+    async def help_command(self, interaction: discord.Interaction) -> None:
+        await self.show_ticket_help(interaction)
+
+    async def claim_current_ticket(self, interaction: discord.Interaction) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            result = await self.claim_service.claim_ticket(
+                channel,
+                actor=interaction.user,
+                is_bot_owner=await self.bot.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+        ) as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket claimed. ticket_id=%s claimer_id=%s changed=%s strict_mode=%s",
+            result.ticket.ticket_id,
+            result.ticket.claimed_by,
+            result.changed,
+            result.strict_mode,
+        )
+        await self._send_ephemeral(interaction, build_claim_success_message(result))
+
+    async def unclaim_current_ticket(self, interaction: discord.Interaction) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            result = await self.claim_service.unclaim_ticket(
+                channel,
+                actor=interaction.user,
+                is_bot_owner=await self.bot.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+        ) as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket unclaimed. ticket_id=%s previous_claimer_id=%s changed=%s forced=%s strict_mode=%s",
+            result.ticket.ticket_id,
+            result.previous_claimer_id,
+            result.changed,
+            result.forced,
+            result.strict_mode,
+        )
+        await self._send_ephemeral(interaction, build_unclaim_success_message(result))
+
+    async def set_current_ticket_priority(
+        self,
+        interaction: discord.Interaction,
+        *,
+        priority: TicketPriority,
+    ) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            result = await self.priority_service.set_priority(
+                channel,
+                actor=interaction.user,
+                priority=priority,
+                is_bot_owner=await self.bot.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+        ) as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket priority updated. ticket_id=%s old_priority=%s new_priority=%s changed=%s channel_name_changed=%s",
+            result.ticket_id,
+            result.old_priority.value,
+            result.new_priority.value,
+            result.changed,
+            result.channel_name_changed,
+        )
+        await self._send_ephemeral(interaction, build_priority_success_message(result))
+
+    async def show_ticket_help(self, interaction: discord.Interaction) -> None:
+        try:
+            self._require_guild_context(interaction)
+        except ValidationError as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket help requested. channel_id=%s user_id=%s",
+            getattr(getattr(interaction, "channel", None), "id", None),
+            getattr(getattr(interaction, "user", None), "id", None),
+        )
+        await self._send_ephemeral(interaction, build_ticket_help_message())
+
+    @staticmethod
+    def _require_ticket_channel(interaction: discord.Interaction) -> Any:
+        if interaction.guild is None:
+            raise ValidationError("该命令只能在服务器中使用。")
+        channel = interaction.channel
+        if channel is None or getattr(channel, "guild", None) is None:
+            raise ValidationError("当前频道不支持 staff ticket 操作。")
+        return channel
+
+    @staticmethod
+    def _require_guild_context(interaction: discord.Interaction) -> Any:
+        if interaction.guild is None:
+            raise ValidationError("该命令只能在服务器中使用。")
+        return interaction.channel
+
+    @staticmethod
+    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
+        if interaction.response.is_done():
+            await interaction.followup.send(content, ephemeral=True)
+            return
+        await interaction.response.send_message(content, ephemeral=True)
+
+
+async def setup(bot: commands.Bot) -> None:
+    try:
+        bot.tree.add_command(ticket_group)
+    except app_commands.CommandAlreadyRegistered:
+        pass
+    await bot.add_cog(StaffCog(bot))
