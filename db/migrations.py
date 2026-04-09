@@ -163,6 +163,11 @@ _MIGRATION_V3_STATEMENTS = (
 )
 
 
+_MIGRATION_V4_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN priority_before_sleep TEXT;",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
@@ -173,6 +178,10 @@ def _migration_v2_add_draft_activity_tracking(connection: sqlite3.Connection) ->
 
 def _migration_v3_add_staff_panel_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V3_STATEMENTS)
+
+
+def _migration_v4_add_sleep_priority_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V4_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -198,6 +207,11 @@ MIGRATIONS = [
         version=3,
         name="add_staff_panel_tracking",
         operation=_migration_v3_add_staff_panel_tracking,
+    ),
+    Migration(
+        version=4,
+        name="add_sleep_priority_tracking",
+        operation=_migration_v4_add_sleep_priority_tracking,
     ),
 ]
 

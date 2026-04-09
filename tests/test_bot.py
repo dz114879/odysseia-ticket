@@ -98,6 +98,7 @@ async def test_setup_hook_restores_active_panel_persistent_views(
             database=migrated_database,
             logging_service=logging_service,
             lock_manager=None,
+            sleep_service=AsyncMock(),
         )
     )
     bot._load_extensions = AsyncMock()
@@ -157,6 +158,7 @@ async def test_setup_hook_skips_invalid_active_panel_recovery(
             database=migrated_database,
             logging_service=logging_service,
             lock_manager=None,
+            sleep_service=AsyncMock(),
         )
     )
     bot._load_extensions = AsyncMock()
@@ -171,4 +173,33 @@ async def test_setup_hook_skips_invalid_active_panel_recovery(
         assert "Skipped restoring active panel view." in logging_service.warning_messages[0]
         assert "guild_id=999" in logging_service.warning_messages[0]
     finally:
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_routes_to_sleep_and_draft_services_before_processing_commands(
+    make_settings,
+) -> None:
+    bot = TicketBot(make_settings())
+    sleep_service = SimpleNamespace(handle_message=AsyncMock())
+    draft_timeout_service = SimpleNamespace(handle_message=AsyncMock())
+    bot.resources = SimpleNamespace(
+        sleep_service=sleep_service,
+        draft_timeout_service=draft_timeout_service,
+    )
+    bot.process_commands = AsyncMock()
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=201, bot=False),
+        guild=SimpleNamespace(id=1),
+        channel=SimpleNamespace(id=9001),
+    )
+
+    try:
+        await bot.on_message(message)
+
+        sleep_service.handle_message.assert_awaited_once_with(message)
+        draft_timeout_service.handle_message.assert_awaited_once_with(message)
+        bot.process_commands.assert_awaited_once_with(message)
+    finally:
+        bot.resources = None
         await bot.close()

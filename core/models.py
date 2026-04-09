@@ -19,6 +19,7 @@ class TicketRecord:
     last_user_message_at: str | None = None
     claimed_by: int | None = None
     priority: TicketPriority = TicketPriority.MEDIUM
+    priority_before_sleep: TicketPriority | None = None
     staff_panel_message_id: int | None = None
 
 

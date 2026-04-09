@@ -308,6 +308,35 @@ async def test_set_current_ticket_priority_updates_channel_name_and_feedback(
 
 
 @pytest.mark.asyncio
+async def test_sleep_current_ticket_updates_status_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    ticket_repository = prepared_staff_cog_context["ticket_repository"]
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.sleep_current_ticket(interaction)
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert interaction.response.messages
+    assert "ticket 已进入 sleep" in interaction.response.messages[0]["content"]
+    assert "睡前优先级：中 🟡" in interaction.response.messages[0]["content"]
+    assert channel.name == "💤|ticket-0001-login-error"
+    assert channel.edit_calls[0]["reason"] == "Put ticket 1-support-0001 to sleep"
+    assert stored is not None
+    assert stored.status is TicketStatus.SLEEP
+    assert stored.priority is TicketPriority.SLEEP
+    assert stored.priority_before_sleep is TicketPriority.MEDIUM
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket entered sleep." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
 async def test_set_current_ticket_priority_rejects_non_staff_user(prepared_staff_cog_context) -> None:
     bot = prepared_staff_cog_context["bot"]
     guild = prepared_staff_cog_context["guild"]
@@ -340,6 +369,7 @@ async def test_show_ticket_help_returns_command_summary_in_submitted_channel(
     assert "/ticket help" in content
     assert "/ticket claim" in content
     assert "/ticket priority" in content
+    assert "/ticket sleep" in content
     assert "draft / submitted" in content
     assert bot.resources.logging_service.info_messages
     assert "Ticket help requested." in bot.resources.logging_service.info_messages[0]

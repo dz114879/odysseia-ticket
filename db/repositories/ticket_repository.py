@@ -30,6 +30,11 @@ class TicketRepository(BaseRepository):
             last_user_message_at=row["last_user_message_at"],
             claimed_by=row["claimed_by"],
             priority=TicketPriority(row["priority"]),
+            priority_before_sleep=(
+                TicketPriority(row["priority_before_sleep"])
+                if row["priority_before_sleep"]
+                else None
+            ),
             staff_panel_message_id=row["staff_panel_message_id"],
         )
 
@@ -58,9 +63,10 @@ class TicketRepository(BaseRepository):
                     last_user_message_at,
                     claimed_by,
                     priority,
+                    priority_before_sleep,
                     staff_panel_message_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -75,6 +81,7 @@ class TicketRepository(BaseRepository):
                     record.last_user_message_at,
                     record.claimed_by,
                     record.priority.value,
+                    record.priority_before_sleep.value if record.priority_before_sleep is not None else None,
                     record.staff_panel_message_id,
                 ),
             )
@@ -91,6 +98,7 @@ class TicketRepository(BaseRepository):
             last_user_message_at=record.last_user_message_at,
             claimed_by=record.claimed_by,
             priority=record.priority,
+            priority_before_sleep=record.priority_before_sleep,
             staff_panel_message_id=record.staff_panel_message_id,
         )
 
@@ -119,9 +127,10 @@ class TicketRepository(BaseRepository):
                     last_user_message_at,
                     claimed_by,
                     priority,
+                    priority_before_sleep,
                     staff_panel_message_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -133,6 +142,7 @@ class TicketRepository(BaseRepository):
                     last_user_message_at = excluded.last_user_message_at,
                     claimed_by = excluded.claimed_by,
                     priority = excluded.priority,
+                    priority_before_sleep = excluded.priority_before_sleep,
                     staff_panel_message_id = excluded.staff_panel_message_id;
                 """,
                 (
@@ -148,6 +158,7 @@ class TicketRepository(BaseRepository):
                     record.last_user_message_at,
                     record.claimed_by,
                     record.priority.value,
+                    record.priority_before_sleep.value if record.priority_before_sleep is not None else None,
                     record.staff_panel_message_id,
                 ),
             )
@@ -164,6 +175,7 @@ class TicketRepository(BaseRepository):
             last_user_message_at=record.last_user_message_at,
             claimed_by=record.claimed_by,
             priority=record.priority,
+            priority_before_sleep=record.priority_before_sleep,
             staff_panel_message_id=record.staff_panel_message_id,
         )
 
@@ -258,6 +270,7 @@ class TicketRepository(BaseRepository):
         last_user_message_at: str | None | object = UNSET,
         claimed_by: int | None | object = UNSET,
         priority: TicketPriority | object = UNSET,
+        priority_before_sleep: TicketPriority | None | object = UNSET,
         staff_panel_message_id: int | None | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> TicketRecord | None:
@@ -283,6 +296,10 @@ class TicketRepository(BaseRepository):
             updates["claimed_by"] = claimed_by
         if priority is not UNSET:
             updates["priority"] = priority.value
+        if priority_before_sleep is not UNSET:
+            updates["priority_before_sleep"] = (
+                priority_before_sleep.value if priority_before_sleep is not None else None
+            )
         if staff_panel_message_id is not UNSET:
             updates["staff_panel_message_id"] = staff_panel_message_id
 

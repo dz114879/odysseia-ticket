@@ -7,6 +7,7 @@ from core.enums import TicketPriority
 if TYPE_CHECKING:
     from services.claim_service import ClaimMutationResult
     from services.priority_service import PriorityUpdateResult
+    from services.sleep_service import SleepMutationResult
 
 
 def build_claim_success_message(result: ClaimMutationResult) -> str:
@@ -61,11 +62,22 @@ def build_priority_success_message(result: PriorityUpdateResult) -> str:
     )
 
 
+def build_sleep_success_message(result: SleepMutationResult) -> str:
+    return (
+        "ticket 已进入 sleep。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 睡前优先级：{_get_priority_label(result.previous_priority)}\n"
+        f"- 旧频道名：`{result.old_channel_name}`\n"
+        f"- 新频道名：`{result.new_channel_name}`"
+    )
+
+
 def _get_priority_label(priority: TicketPriority) -> str:
     labels = {
         TicketPriority.LOW: "低 🟢",
         TicketPriority.MEDIUM: "中 🟡",
         TicketPriority.HIGH: "高 🔴",
         TicketPriority.EMERGENCY: "紧急 ‼️",
+        TicketPriority.SLEEP: "挂起 💤",
     }
     return labels.get(priority, priority.value)

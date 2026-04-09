@@ -176,6 +176,32 @@ async def test_refresh_now_updates_staff_panel_embed_with_latest_ticket_state(
 
 
 @pytest.mark.asyncio
+async def test_refresh_now_renders_sleep_status_and_previous_priority(
+    prepared_staff_panel_context,
+) -> None:
+    database = prepared_staff_panel_context["database"]
+    ticket_repository = prepared_staff_panel_context["ticket_repository"]
+    ticket = prepared_staff_panel_context["ticket"]
+    message = prepared_staff_panel_context["message"]
+    service = StaffPanelService(database, bot=FakeBot(prepared_staff_panel_context["channel"]))
+
+    ticket_repository.update(
+        ticket.ticket_id,
+        status=TicketStatus.SLEEP,
+        priority=TicketPriority.SLEEP,
+        priority_before_sleep=TicketPriority.HIGH,
+    )
+
+    await service.refresh_now(ticket_id=ticket.ticket_id)
+
+    assert message.embed is not None
+    fields = {field.name: field.value for field in message.embed.fields}
+    assert fields["状态"] == "sleep 挂起中"
+    assert fields["优先级"] == "挂起 💤（睡前：高 🔴）"
+    assert "sleep 挂起状态" in (message.embed.description or "")
+
+
+@pytest.mark.asyncio
 async def test_request_refresh_debounces_multiple_updates_into_single_message_edit(
     prepared_staff_panel_context,
 ) -> None:

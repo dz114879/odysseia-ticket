@@ -16,6 +16,8 @@ from runtime.locks import LockManager
 from runtime.scheduler import BackgroundScheduler
 from services.draft_timeout_service import DraftTimeoutService
 from services.logging_service import LoggingService
+from services.sleep_service import SleepService
+from services.staff_panel_service import StaffPanelService
 
 
 @dataclass(slots=True)
@@ -30,6 +32,7 @@ class BootstrapResources:
     debounce_manager: DebounceManager
     cache: RuntimeCacheStore
     draft_timeout_service: DraftTimeoutService
+    sleep_service: SleepService
 
 
 class BootstrapService:
@@ -46,6 +49,7 @@ class BootstrapService:
         self.debounce_manager: DebounceManager | None = None
         self.cache: RuntimeCacheStore | None = None
         self.draft_timeout_service: DraftTimeoutService | None = None
+        self.sleep_service: SleepService | None = None
 
     async def bootstrap(self) -> BootstrapResources:
         if self.resources is not None:
@@ -71,6 +75,15 @@ class BootstrapService:
             bot=self.bot,
             lock_manager=self.lock_manager,
             logger=self.logging_service.child("draft-timeout"),
+        )
+        self.sleep_service = SleepService(
+            self.database,
+            lock_manager=self.lock_manager,
+            staff_panel_service=StaffPanelService(
+                self.database,
+                bot=self.bot,
+                debounce_manager=self.debounce_manager,
+            ),
         )
 
         self.scheduler = BackgroundScheduler(
@@ -100,6 +113,7 @@ class BootstrapService:
             debounce_manager=self.debounce_manager,
             cache=self.cache,
             draft_timeout_service=self.draft_timeout_service,
+            sleep_service=self.sleep_service,
         )
 
         self.logging_service.log_local_info(

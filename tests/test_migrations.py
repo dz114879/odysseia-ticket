@@ -45,6 +45,7 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     ticket_column_names = {row["name"] for row in ticket_columns}
     assert "last_user_message_at" in ticket_column_names
     assert "staff_panel_message_id" in ticket_column_names
+    assert "priority_before_sleep" in ticket_column_names
 
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:

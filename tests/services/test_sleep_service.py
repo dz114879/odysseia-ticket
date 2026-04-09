@@ -10,6 +10,7 @@ from core.errors import InvalidTicketStateError, PermissionDeniedError
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
+from runtime.locks import LockManager
 from services.sleep_service import SleepService
 
 
@@ -30,8 +31,36 @@ class FakeMember:
 
 
 @dataclass
+class FakeMessage:
+    content: str
+
+
 class FakeChannel:
-    id: int
+    def __init__(self, channel_id: int, *, name: str, fail_edit: bool = False) -> None:
+        self.id = channel_id
+        self.name = name
+        self.fail_edit = fail_edit
+        self.edit_calls: list[dict[str, str | None]] = []
+        self.sent_messages: list[FakeMessage] = []
+
+    async def edit(self, *, name: str, reason: str | None = None) -> None:
+        if self.fail_edit:
+            raise RuntimeError("channel rename failed")
+        self.edit_calls.append({"name": name, "reason": reason})
+        self.name = name
+
+    async def send(self, *, content: str | None = None, embed=None, view=None):
+        message = FakeMessage(content or "")
+        self.sent_messages.append(message)
+        return message
+
+
+class FakeStaffPanelService:
+    def __init__(self) -> None:
+        self.requested_ticket_ids: list[str] = []
+
+    def request_refresh(self, ticket_id: str) -> None:
+        self.requested_ticket_ids.append(ticket_id)
 
 
 @pytest.fixture
@@ -95,7 +124,7 @@ def prepared_sleep_context(migrated_database):
         "database": migrated_database,
         "ticket_repository": ticket_repository,
         "ticket": ticket,
-        "channel": FakeChannel(ticket.channel_id or 9001),
+        "channel": FakeChannel(ticket.channel_id or 9001, name="🔴|ticket-0001-login-error"),
         "staff_member": staff_member,
         "outsider": outsider,
     }
@@ -135,3 +164,145 @@ def test_inspect_sleep_request_rejects_non_submitted_ticket(prepared_sleep_conte
 
     with pytest.raises(InvalidTicketStateError, match="submitted"):
         service.inspect_sleep_request(channel, actor=staff_member)
+
+
+@pytest.mark.asyncio
+async def test_sleep_ticket_updates_status_priority_channel_name_and_panel_refresh(prepared_sleep_context) -> None:
+    database = prepared_sleep_context["database"]
+    channel = prepared_sleep_context["channel"]
+    staff_member = prepared_sleep_context["staff_member"]
+    ticket_repository = prepared_sleep_context["ticket_repository"]
+    staff_panel_service = FakeStaffPanelService()
+    service = SleepService(
+        database,
+        lock_manager=LockManager(),
+        staff_panel_service=staff_panel_service,
+    )
+
+    result = await service.sleep_ticket(channel, actor=staff_member)
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert result.changed is True
+    assert result.previous_priority is TicketPriority.HIGH
+    assert result.old_channel_name == "🔴|ticket-0001-login-error"
+    assert result.new_channel_name == "💤|ticket-0001-login-error"
+    assert result.channel_name_changed is True
+    assert stored is not None
+    assert stored.status is TicketStatus.SLEEP
+    assert stored.priority is TicketPriority.SLEEP
+    assert stored.priority_before_sleep is TicketPriority.HIGH
+    assert result.ticket.status is TicketStatus.SLEEP
+    assert result.ticket.priority is TicketPriority.SLEEP
+    assert result.ticket.priority_before_sleep is TicketPriority.HIGH
+    assert channel.name == "💤|ticket-0001-login-error"
+    assert channel.edit_calls[0]["reason"] == "Put ticket 1-support-0001 to sleep"
+    assert channel.sent_messages
+    assert "已将 ticket `1-support-0001` 挂起" in channel.sent_messages[0].content
+    assert "睡前优先级：高 🔴" in channel.sent_messages[0].content
+    assert staff_panel_service.requested_ticket_ids == [prepared_sleep_context["ticket"].ticket_id]
+
+
+@pytest.mark.asyncio
+async def test_handle_message_wakes_sleep_ticket_and_restores_previous_priority(prepared_sleep_context) -> None:
+    database = prepared_sleep_context["database"]
+    channel = prepared_sleep_context["channel"]
+    ticket_repository = prepared_sleep_context["ticket_repository"]
+    staff_panel_service = FakeStaffPanelService()
+    service = SleepService(
+        database,
+        lock_manager=LockManager(),
+        staff_panel_service=staff_panel_service,
+    )
+    ticket_repository.update(
+        prepared_sleep_context["ticket"].ticket_id,
+        status=TicketStatus.SLEEP,
+        priority=TicketPriority.SLEEP,
+        priority_before_sleep=TicketPriority.HIGH,
+    )
+    channel.name = "💤|ticket-0001-login-error"
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=777, bot=False),
+        guild=SimpleNamespace(id=1),
+        channel=channel,
+    )
+
+    result = await service.handle_message(message)
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert result is not None
+    assert result.restored_priority is TicketPriority.HIGH
+    assert result.old_channel_name == "💤|ticket-0001-login-error"
+    assert result.new_channel_name == "🔴|ticket-0001-login-error"
+    assert stored is not None
+    assert stored.status is TicketStatus.SUBMITTED
+    assert stored.priority is TicketPriority.HIGH
+    assert stored.priority_before_sleep is None
+    assert channel.name == "🔴|ticket-0001-login-error"
+    assert channel.edit_calls[0]["reason"] == "Wake ticket 1-support-0001 from sleep"
+    assert channel.sent_messages
+    assert "已唤醒 ticket `1-support-0001`" in channel.sent_messages[0].content
+    assert "恢复优先级：高 🔴" in channel.sent_messages[0].content
+    assert staff_panel_service.requested_ticket_ids == [prepared_sleep_context["ticket"].ticket_id]
+
+
+@pytest.mark.asyncio
+async def test_handle_message_returns_none_for_non_sleep_ticket(prepared_sleep_context) -> None:
+    service = SleepService(prepared_sleep_context["database"], lock_manager=LockManager())
+    message = SimpleNamespace(
+        author=SimpleNamespace(id=777, bot=False),
+        guild=SimpleNamespace(id=1),
+        channel=prepared_sleep_context["channel"],
+    )
+
+    assert await service.handle_message(message) is None
+
+
+@pytest.mark.asyncio
+async def test_sleep_ticket_rolls_back_ticket_state_when_channel_rename_fails(prepared_sleep_context) -> None:
+    database = prepared_sleep_context["database"]
+    staff_member = prepared_sleep_context["staff_member"]
+    ticket_repository = prepared_sleep_context["ticket_repository"]
+    ticket = prepared_sleep_context["ticket"]
+    failing_channel = FakeChannel(ticket.channel_id or 9001, name="ticket-0001-login-error", fail_edit=True)
+    service = SleepService(database, lock_manager=LockManager())
+
+    with pytest.raises(RuntimeError, match="rename failed"):
+        await service.sleep_ticket(failing_channel, actor=staff_member)
+
+    stored = ticket_repository.get_by_channel_id(failing_channel.id)
+    assert stored is not None
+    assert stored.status is TicketStatus.SUBMITTED
+    assert stored.priority is TicketPriority.HIGH
+    assert stored.priority_before_sleep is None
+    assert not failing_channel.sent_messages
+
+
+@pytest.mark.asyncio
+async def test_wake_ticket_rolls_back_state_when_channel_rename_fails(prepared_sleep_context) -> None:
+    database = prepared_sleep_context["database"]
+    ticket_repository = prepared_sleep_context["ticket_repository"]
+    ticket = prepared_sleep_context["ticket"]
+    staff_panel_service = FakeStaffPanelService()
+    failing_channel = FakeChannel(ticket.channel_id or 9001, name="💤|ticket-0001-login-error", fail_edit=True)
+    service = SleepService(
+        database,
+        lock_manager=LockManager(),
+        staff_panel_service=staff_panel_service,
+    )
+    ticket_repository.update(
+        ticket.ticket_id,
+        status=TicketStatus.SLEEP,
+        priority=TicketPriority.SLEEP,
+        priority_before_sleep=TicketPriority.HIGH,
+    )
+
+    with pytest.raises(RuntimeError, match="rename failed"):
+        await service.wake_ticket(failing_channel, actor=SimpleNamespace(id=777))
+
+    stored = ticket_repository.get_by_channel_id(failing_channel.id)
+    assert stored is not None
+    assert stored.status is TicketStatus.SLEEP
+    assert stored.priority is TicketPriority.SLEEP
+    assert stored.priority_before_sleep is TicketPriority.HIGH
+    assert not failing_channel.sent_messages
+    assert staff_panel_service.requested_ticket_ids == []

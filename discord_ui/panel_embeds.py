@@ -60,7 +60,7 @@ def build_staff_control_panel_embed(
     )
     embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)
     embed.add_field(name="状态", value=_format_status_label(ticket.status), inline=True)
-    embed.add_field(name="优先级", value=_format_priority_label(ticket.priority), inline=True)
+    embed.add_field(name="优先级", value=_format_ticket_priority_label(ticket), inline=True)
     embed.add_field(name="认领模式", value=_format_claim_mode_label(config.claim_mode if config else None), inline=True)
     embed.add_field(name="分类", value=category.display_name, inline=True)
     embed.add_field(name="创建者", value=f"<@{ticket.creator_id}>", inline=True)
@@ -76,11 +76,19 @@ def _build_staff_panel_description(
     *,
     config: GuildConfigRecord | None,
 ) -> str:
-    description = "当前 ticket 已提交，可通过 staff 命令继续处理。"
+    if ticket.status is TicketStatus.SLEEP:
+        description = "当前 ticket 已进入 sleep 挂起状态，不占 active 容量；现有参与者权限保持不变。"
+    elif ticket.status is TicketStatus.SUBMITTED:
+        description = "当前 ticket 已提交，可通过 staff 命令继续处理。"
+    else:
+        description = f"当前 ticket 状态为 { _format_status_label(ticket.status) }。"
+
     if config is None:
         return description
 
-    if config.claim_mode is ClaimMode.STRICT and ticket.claimed_by is None:
+    if (
+        ticket.status is TicketStatus.SUBMITTED and config.claim_mode is ClaimMode.STRICT and ticket.claimed_by is None
+    ):
         return f"{description}\n当前为 strict claim mode，未认领前 staff 默认仅可见不可发言。"
     return f"{description}\n当前 claim mode：{_format_claim_mode_label(config.claim_mode)}。"
 
@@ -95,6 +103,15 @@ def _format_category_lines(categories: list[TicketCategoryConfig]) -> str:
         description = category.description or "暂无描述"
         lines.append(f"{prefix}**{category.display_name}**：{description}")
     return "\n".join(lines)
+
+
+def _format_ticket_priority_label(ticket: TicketRecord) -> str:
+    if ticket.priority is TicketPriority.SLEEP:
+        sleep_label = _format_priority_label(TicketPriority.SLEEP)
+        if ticket.priority_before_sleep is None:
+            return sleep_label
+        return f"{sleep_label}（睡前：{_format_priority_label(ticket.priority_before_sleep)}）"
+    return _format_priority_label(ticket.priority)
 
 
 def _format_priority_label(priority: TicketPriority) -> str:

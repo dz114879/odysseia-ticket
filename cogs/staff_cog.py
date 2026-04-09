@@ -16,11 +16,13 @@ from core.errors import (
 )
 from discord_ui.help_text import build_ticket_help_message
 from discord_ui.staff_feedback import (
-    build_claim_success_message, build_priority_success_message, build_unclaim_success_message,
+    build_claim_success_message, build_priority_success_message, build_sleep_success_message,
+    build_unclaim_success_message,
 )
 from discord_ui.staff_panel_view import StaffPanelView
 from services.claim_service import ClaimService
 from services.priority_service import PriorityService
+from services.sleep_service import SleepService
 from services.staff_panel_service import StaffPanelService
 
 
@@ -43,6 +45,11 @@ class StaffCog(commands.Cog):
             staff_panel_service=self.staff_panel_service,
         )
         self.priority_service = PriorityService(
+            resources.database,
+            lock_manager=getattr(resources, "lock_manager", None),
+            staff_panel_service=self.staff_panel_service,
+        )
+        self.sleep_service = SleepService(
             resources.database,
             lock_manager=getattr(resources, "lock_manager", None),
             staff_panel_service=self.staff_panel_service,
@@ -79,6 +86,11 @@ class StaffCog(commands.Cog):
         priority: app_commands.Choice[str],
     ) -> None:
         await self.set_current_ticket_priority(interaction, priority=TicketPriority(priority.value))
+
+    @ticket_group.command(name="sleep", description="将当前 submitted ticket 挂起为 sleep 状态")
+    @app_commands.guild_only()
+    async def sleep_command(self, interaction: discord.Interaction) -> None:
+        await self.sleep_current_ticket(interaction)
 
     @ticket_group.command(name="help", description="查看当前 ticket 工作流帮助")
     @app_commands.guild_only()
@@ -170,6 +182,31 @@ class StaffCog(commands.Cog):
             result.channel_name_changed,
         )
         await self._send_ephemeral(interaction, build_priority_success_message(result))
+
+    async def sleep_current_ticket(self, interaction: discord.Interaction) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            result = await self.sleep_service.sleep_ticket(
+                channel,
+                actor=interaction.user,
+                is_bot_owner=await self.bot.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+        ) as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket entered sleep. ticket_id=%s previous_priority=%s channel_name_changed=%s",
+            result.ticket.ticket_id,
+            result.previous_priority.value,
+            result.channel_name_changed,
+        )
+        await self._send_ephemeral(interaction, build_sleep_success_message(result))
 
     async def show_ticket_help(self, interaction: discord.Interaction) -> None:
         try:

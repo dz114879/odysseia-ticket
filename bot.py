@@ -77,6 +77,7 @@ class TicketBot(commands.Bot):
 
     async def on_message(self, message: discord.Message) -> None:
         if self.resources is not None:
+            await self.resources.sleep_service.handle_message(message)
             await self.resources.draft_timeout_service.handle_message(message)
 
         await self.process_commands(message)
