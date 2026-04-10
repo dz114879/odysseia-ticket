@@ -168,6 +168,16 @@ _MIGRATION_V4_STATEMENTS = (
 )
 
 
+_MIGRATION_V5_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN status_before TEXT;",
+    "ALTER TABLE tickets ADD COLUMN transfer_target_category TEXT;",
+    "ALTER TABLE tickets ADD COLUMN transfer_initiated_by INTEGER;",
+    "ALTER TABLE tickets ADD COLUMN transfer_reason TEXT;",
+    "ALTER TABLE tickets ADD COLUMN transfer_execute_at TEXT;",
+    "ALTER TABLE tickets ADD COLUMN transfer_history_json TEXT NOT NULL DEFAULT '[]';",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
@@ -182,6 +192,10 @@ def _migration_v3_add_staff_panel_tracking(connection: sqlite3.Connection) -> No
 
 def _migration_v4_add_sleep_priority_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V4_STATEMENTS)
+
+
+def _migration_v5_add_transfer_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V5_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -212,6 +226,11 @@ MIGRATIONS = [
         version=4,
         name="add_sleep_priority_tracking",
         operation=_migration_v4_add_sleep_priority_tracking,
+    ),
+    Migration(
+        version=5,
+        name="add_transfer_tracking",
+        operation=_migration_v5_add_transfer_tracking,
     ),
 ]
 

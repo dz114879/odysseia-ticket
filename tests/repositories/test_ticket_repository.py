@@ -27,6 +27,12 @@ def make_ticket(
     claimed_by: int | None = None,
     priority: TicketPriority = TicketPriority.MEDIUM,
     priority_before_sleep: TicketPriority | None = None,
+    status_before: TicketStatus | None = None,
+    transfer_target_category: str | None = None,
+    transfer_initiated_by: int | None = None,
+    transfer_reason: str | None = None,
+    transfer_execute_at: str | None = None,
+    transfer_history_json: str = "[]",
     staff_panel_message_id: int | None = None,
 ) -> TicketRecord:
     return TicketRecord(
@@ -43,6 +49,12 @@ def make_ticket(
         claimed_by=claimed_by,
         priority=priority,
         priority_before_sleep=priority_before_sleep,
+        status_before=status_before,
+        transfer_target_category=transfer_target_category,
+        transfer_initiated_by=transfer_initiated_by,
+        transfer_reason=transfer_reason,
+        transfer_execute_at=transfer_execute_at,
+        transfer_history_json=transfer_history_json,
         staff_panel_message_id=staff_panel_message_id,
     )
 
@@ -59,6 +71,12 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             staff_panel_message_id=3333,
             priority=TicketPriority.SLEEP,
             priority_before_sleep=TicketPriority.HIGH,
+            status_before=TicketStatus.SUBMITTED,
+            transfer_target_category="billing",
+            transfer_initiated_by=301,
+            transfer_reason="需要账单组处理",
+            transfer_execute_at="2024-01-01T02:00:00+00:00",
+            transfer_history_json='[{"target":"billing"}]',
         )
     )
 
@@ -70,6 +88,12 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.status is TicketStatus.SLEEP
     assert loaded.priority is TicketPriority.SLEEP
     assert loaded.priority_before_sleep is TicketPriority.HIGH
+    assert loaded.status_before is TicketStatus.SUBMITTED
+    assert loaded.transfer_target_category == "billing"
+    assert loaded.transfer_initiated_by == 301
+    assert loaded.transfer_reason == "需要账单组处理"
+    assert loaded.transfer_execute_at == "2024-01-01T02:00:00+00:00"
+    assert loaded.transfer_history_json == '[{"target":"billing"}]'
     assert loaded.has_user_message is True
     assert loaded.last_user_message_at == "2024-01-01T01:00:00+00:00"
     assert loaded.staff_panel_message_id == 3333
@@ -117,6 +141,34 @@ def test_list_by_guild_supports_status_and_creator_filters(repository: TicketRep
     assert [record.ticket_id for record in drafts_by_creator] == ["ticket-001"]
 
 
+def test_list_due_transfer_executions_returns_only_due_transferring_tickets(
+    repository: TicketRepository,
+) -> None:
+    repository.create(
+        make_ticket(
+            "ticket-due",
+            status=TicketStatus.TRANSFERRING,
+            transfer_execute_at="2024-01-01T01:00:00+00:00",
+        )
+    )
+    repository.create(
+        make_ticket(
+            "ticket-future",
+            status=TicketStatus.TRANSFERRING,
+            transfer_execute_at="2024-01-01T03:00:00+00:00",
+        )
+    )
+    repository.create(
+        make_ticket(
+            "ticket-submitted",
+            status=TicketStatus.SUBMITTED,
+            transfer_execute_at="2024-01-01T00:30:00+00:00",
+        )
+    )
+
+    assert [ticket.ticket_id for ticket in repository.list_due_transfer_executions("2024-01-01T02:00:00+00:00")] == ["ticket-due"]
+
+
 def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     repository: TicketRepository,
 ) -> None:
@@ -141,6 +193,12 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
             claimed_by=42,
             priority=TicketPriority.EMERGENCY,
             priority_before_sleep=TicketPriority.HIGH,
+            status_before=TicketStatus.SLEEP,
+            transfer_target_category="billing",
+            transfer_initiated_by=301,
+            transfer_reason="sleep 状态下转交",
+            transfer_execute_at="2024-02-01T02:00:00+00:00",
+            transfer_history_json='[{"target":"billing","status_before":"sleep"}]',
         )
     )
 
@@ -152,6 +210,12 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         staff_panel_message_id=8080,
         priority_before_sleep=None,
         last_user_message_at=None,
+        status_before=None,
+        transfer_target_category=None,
+        transfer_initiated_by=None,
+        transfer_reason=None,
+        transfer_execute_at=None,
+        transfer_history_json="[]",
     )
 
     assert upserted.created_at == "2024-01-01T00:00:00+00:00"
@@ -162,6 +226,12 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert upserted.claimed_by == 42
     assert upserted.priority is TicketPriority.EMERGENCY
     assert upserted.priority_before_sleep is TicketPriority.HIGH
+    assert upserted.status_before is TicketStatus.SLEEP
+    assert upserted.transfer_target_category == "billing"
+    assert upserted.transfer_initiated_by == 301
+    assert upserted.transfer_reason == "sleep 状态下转交"
+    assert upserted.transfer_execute_at == "2024-02-01T02:00:00+00:00"
+    assert upserted.transfer_history_json == '[{"target":"billing","status_before":"sleep"}]'
 
     assert updated is not None
     assert updated.created_at == "2024-01-01T00:00:00+00:00"
@@ -172,6 +242,12 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.last_user_message_at is None
     assert updated.staff_panel_message_id == 8080
     assert updated.priority_before_sleep is None
+    assert updated.status_before is None
+    assert updated.transfer_target_category is None
+    assert updated.transfer_initiated_by is None
+    assert updated.transfer_reason is None
+    assert updated.transfer_execute_at is None
+    assert updated.transfer_history_json == "[]"
     assert updated.updated_at == "2024-03-01T00:00:00+00:00"
 
     assert repository.delete("ticket-100") is True

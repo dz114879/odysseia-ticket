@@ -17,6 +17,7 @@ from core.errors import (
 from discord_ui.help_text import build_ticket_help_message
 from discord_ui.staff_feedback import (
     build_claim_success_message, build_priority_success_message, build_sleep_success_message,
+    build_transfer_success_message, build_untransfer_success_message,
     build_unclaim_success_message,
 )
 from discord_ui.staff_panel_view import StaffPanelView
@@ -24,6 +25,7 @@ from services.claim_service import ClaimService
 from services.priority_service import PriorityService
 from services.sleep_service import SleepService
 from services.staff_panel_service import StaffPanelService
+from services.transfer_service import TransferService
 
 
 class StaffCog(commands.Cog):
@@ -50,6 +52,11 @@ class StaffCog(commands.Cog):
             staff_panel_service=self.staff_panel_service,
         )
         self.sleep_service = SleepService(
+            resources.database,
+            lock_manager=getattr(resources, "lock_manager", None),
+            staff_panel_service=self.staff_panel_service,
+        )
+        self.transfer_service = TransferService(
             resources.database,
             lock_manager=getattr(resources, "lock_manager", None),
             staff_panel_service=self.staff_panel_service,
@@ -91,6 +98,25 @@ class StaffCog(commands.Cog):
     @app_commands.guild_only()
     async def sleep_command(self, interaction: discord.Interaction) -> None:
         await self.sleep_current_ticket(interaction)
+
+    @ticket_group.command(name="transfer", description="发起当前 ticket 的跨分类转交")
+    @app_commands.guild_only()
+    @app_commands.describe(
+        target_category_key="目标分类的 category_key",
+        reason="转交理由（可选）",
+    )
+    async def transfer_command(
+        self,
+        interaction: discord.Interaction,
+        target_category_key: str,
+        reason: str | None = None,
+    ) -> None:
+        await self.transfer_current_ticket(interaction, target_category_key=target_category_key, reason=reason)
+
+    @ticket_group.command(name="untransfer", description="撤销当前 ticket 的跨分类转交")
+    @app_commands.guild_only()
+    async def untransfer_command(self, interaction: discord.Interaction) -> None:
+        await self.untransfer_current_ticket(interaction)
 
     @ticket_group.command(name="help", description="查看当前 ticket 工作流帮助")
     @app_commands.guild_only()
@@ -207,6 +233,66 @@ class StaffCog(commands.Cog):
             result.channel_name_changed,
         )
         await self._send_ephemeral(interaction, build_sleep_success_message(result))
+
+    async def transfer_current_ticket(
+        self,
+        interaction: discord.Interaction,
+        *,
+        target_category_key: str,
+        reason: str | None = None,
+    ) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            result = await self.transfer_service.transfer_ticket(
+                channel,
+                actor=interaction.user,
+                target_category_key=target_category_key,
+                reason=reason,
+                is_bot_owner=await self.bot.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+        ) as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket transfer initiated. ticket_id=%s previous_status=%s target_category=%s initiated_by=%s",
+            result.ticket.ticket_id,
+            result.previous_status.value,
+            result.target_category.category_key,
+            getattr(interaction.user, "id", None),
+        )
+        await self._send_ephemeral(interaction, build_transfer_success_message(result))
+
+    async def untransfer_current_ticket(self, interaction: discord.Interaction) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            result = await self.transfer_service.cancel_transfer(
+                channel,
+                actor=interaction.user,
+                is_bot_owner=await self.bot.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+        ) as exc:
+            await self._send_ephemeral(interaction, str(exc))
+            return
+
+        self.logging_service.log_local_info(
+            "Ticket transfer cancelled. ticket_id=%s restored_status=%s target_category=%s cancelled_by=%s",
+            result.ticket.ticket_id,
+            result.restored_status.value,
+            result.previous_target_category_key,
+            getattr(interaction.user, "id", None),
+        )
+        await self._send_ephemeral(interaction, build_untransfer_success_message(result))
 
     async def show_ticket_help(self, interaction: discord.Interaction) -> None:
         try:

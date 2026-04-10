@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
-import discord
-
-from core.enums import ClaimMode, TicketStatus
+from core.enums import TicketStatus
 from core.errors import ValidationError
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 from db.connection import DatabaseManager
 from db.repositories.ticket_repository import TicketRepository
+from services.staff_permission_service import StaffPermissionService
 from runtime.locks import LockManager
 from discord_ui.panel_embeds import build_staff_control_panel_embed
 from discord_ui.staff_panel_view import StaffPanelView
@@ -39,11 +37,13 @@ class SubmitService:
         guard_service: SubmissionGuardService | None = None,
         ticket_repository: TicketRepository | None = None,
         lock_manager: LockManager | None = None,
+        permission_service: StaffPermissionService | None = None,
     ) -> None:
         self.database = database
         self.guard_service = guard_service or SubmissionGuardService(database)
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.lock_manager = lock_manager
+        self.permission_service = permission_service or StaffPermissionService()
 
     async def submit_draft_ticket(
         self,
@@ -160,49 +160,12 @@ class SubmitService:
         config: GuildConfigRecord,
         category: TicketCategoryConfig,
     ) -> None:
-        set_permissions = getattr(channel, "set_permissions", None)
-        guild = getattr(channel, "guild", None)
-        if guild is None or set_permissions is None:
-            return
-
-        can_staff_send = config.claim_mode is not ClaimMode.STRICT
-        visible_permissions = discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=can_staff_send,
-            read_message_history=True,
-            attach_files=can_staff_send,
-            embed_links=can_staff_send,
+        await self.permission_service.apply_staff_overwrite_plan(
+            channel,
+            config=config,
+            category=category,
+            visible_reason=f"Open submitted ticket {getattr(channel, 'id', 'unknown')} to staff",
         )
-
-        targets: list[Any] = []
-        if config.admin_role_id is not None:
-            admin_role = guild.get_role(config.admin_role_id)
-            if admin_role is not None:
-                targets.append(admin_role)
-
-        if category.staff_role_id is not None:
-            staff_role = guild.get_role(category.staff_role_id)
-            if staff_role is not None:
-                targets.append(staff_role)
-
-        get_member = getattr(guild, "get_member", None)
-        if callable(get_member):
-            for staff_user_id in self._parse_staff_user_ids(category.staff_user_ids_json):
-                staff_member = get_member(staff_user_id)
-                if staff_member is not None:
-                    targets.append(staff_member)
-
-        seen_target_ids: set[int] = set()
-        for target in targets:
-            target_id = getattr(target, "id", None)
-            if target_id is None or target_id in seen_target_ids:
-                continue
-            seen_target_ids.add(target_id)
-            await set_permissions(
-                target,
-                overwrite=visible_permissions,
-                reason=f"Open submitted ticket {getattr(channel, 'id', 'unknown')} to staff",
-            )
 
     async def _send_submission_divider(self, channel: Any, ticket: TicketRecord) -> Any | None:
         send = getattr(channel, "send", None)
@@ -270,21 +233,6 @@ class SubmitService:
     @staticmethod
     def _build_channel_topic(ticket: TicketRecord) -> str:
         return f"ticket_id={ticket.ticket_id} creator_id={ticket.creator_id} status=submitted"
-
-    @staticmethod
-    def _parse_staff_user_ids(raw_value: str) -> list[int]:
-        try:
-            data = json.loads(raw_value or "[]")
-        except json.JSONDecodeError:
-            return []
-
-        values: list[int] = []
-        for item in data if isinstance(data, list) else []:
-            try:
-                values.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return values
 
     @asynccontextmanager
     async def _acquire_channel_lock(self, channel_id: int) -> AsyncIterator[None]:

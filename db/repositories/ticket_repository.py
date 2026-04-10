@@ -35,6 +35,12 @@ class TicketRepository(BaseRepository):
                 if row["priority_before_sleep"]
                 else None
             ),
+            status_before=TicketStatus(row["status_before"]) if row["status_before"] else None,
+            transfer_target_category=row["transfer_target_category"],
+            transfer_initiated_by=row["transfer_initiated_by"],
+            transfer_reason=row["transfer_reason"],
+            transfer_execute_at=row["transfer_execute_at"],
+            transfer_history_json=row["transfer_history_json"],
             staff_panel_message_id=row["staff_panel_message_id"],
         )
 
@@ -64,9 +70,15 @@ class TicketRepository(BaseRepository):
                     claimed_by,
                     priority,
                     priority_before_sleep,
+                    status_before,
+                    transfer_target_category,
+                    transfer_initiated_by,
+                    transfer_reason,
+                    transfer_execute_at,
+                    transfer_history_json,
                     staff_panel_message_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -82,6 +94,12 @@ class TicketRepository(BaseRepository):
                     record.claimed_by,
                     record.priority.value,
                     record.priority_before_sleep.value if record.priority_before_sleep is not None else None,
+                    record.status_before.value if record.status_before is not None else None,
+                    record.transfer_target_category,
+                    record.transfer_initiated_by,
+                    record.transfer_reason,
+                    record.transfer_execute_at,
+                    record.transfer_history_json,
                     record.staff_panel_message_id,
                 ),
             )
@@ -99,6 +117,12 @@ class TicketRepository(BaseRepository):
             claimed_by=record.claimed_by,
             priority=record.priority,
             priority_before_sleep=record.priority_before_sleep,
+            status_before=record.status_before,
+            transfer_target_category=record.transfer_target_category,
+            transfer_initiated_by=record.transfer_initiated_by,
+            transfer_reason=record.transfer_reason,
+            transfer_execute_at=record.transfer_execute_at,
+            transfer_history_json=record.transfer_history_json,
             staff_panel_message_id=record.staff_panel_message_id,
         )
 
@@ -128,9 +152,15 @@ class TicketRepository(BaseRepository):
                     claimed_by,
                     priority,
                     priority_before_sleep,
+                    status_before,
+                    transfer_target_category,
+                    transfer_initiated_by,
+                    transfer_reason,
+                    transfer_execute_at,
+                    transfer_history_json,
                     staff_panel_message_id
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -143,6 +173,12 @@ class TicketRepository(BaseRepository):
                     claimed_by = excluded.claimed_by,
                     priority = excluded.priority,
                     priority_before_sleep = excluded.priority_before_sleep,
+                    status_before = excluded.status_before,
+                    transfer_target_category = excluded.transfer_target_category,
+                    transfer_initiated_by = excluded.transfer_initiated_by,
+                    transfer_reason = excluded.transfer_reason,
+                    transfer_execute_at = excluded.transfer_execute_at,
+                    transfer_history_json = excluded.transfer_history_json,
                     staff_panel_message_id = excluded.staff_panel_message_id;
                 """,
                 (
@@ -159,6 +195,12 @@ class TicketRepository(BaseRepository):
                     record.claimed_by,
                     record.priority.value,
                     record.priority_before_sleep.value if record.priority_before_sleep is not None else None,
+                    record.status_before.value if record.status_before is not None else None,
+                    record.transfer_target_category,
+                    record.transfer_initiated_by,
+                    record.transfer_reason,
+                    record.transfer_execute_at,
+                    record.transfer_history_json,
                     record.staff_panel_message_id,
                 ),
             )
@@ -176,6 +218,12 @@ class TicketRepository(BaseRepository):
             claimed_by=record.claimed_by,
             priority=record.priority,
             priority_before_sleep=record.priority_before_sleep,
+            status_before=record.status_before,
+            transfer_target_category=record.transfer_target_category,
+            transfer_initiated_by=record.transfer_initiated_by,
+            transfer_reason=record.transfer_reason,
+            transfer_execute_at=record.transfer_execute_at,
+            transfer_history_json=record.transfer_history_json,
             staff_panel_message_id=record.staff_panel_message_id,
         )
 
@@ -255,6 +303,25 @@ class TicketRepository(BaseRepository):
             rows = current_connection.execute(query, parameters).fetchall()
         return [self._row_to_record(row) for row in rows]
 
+    def list_due_transfer_executions(
+        self,
+        execute_before: str,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[TicketRecord]:
+        query = (
+            "SELECT * FROM tickets "
+            "WHERE status = ? "
+            "AND transfer_execute_at IS NOT NULL "
+            "AND transfer_execute_at <= ? "
+            "ORDER BY transfer_execute_at ASC, created_at ASC;"
+        )
+        parameters = [TicketStatus.TRANSFERRING.value, execute_before]
+
+        with self.read_connection(connection) as current_connection:
+            rows = current_connection.execute(query, parameters).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
     def update(
         self,
         ticket_id: str,
@@ -271,6 +338,12 @@ class TicketRepository(BaseRepository):
         claimed_by: int | None | object = UNSET,
         priority: TicketPriority | object = UNSET,
         priority_before_sleep: TicketPriority | None | object = UNSET,
+        status_before: TicketStatus | None | object = UNSET,
+        transfer_target_category: str | None | object = UNSET,
+        transfer_initiated_by: int | None | object = UNSET,
+        transfer_reason: str | None | object = UNSET,
+        transfer_execute_at: str | None | object = UNSET,
+        transfer_history_json: str | object = UNSET,
         staff_panel_message_id: int | None | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> TicketRecord | None:
@@ -300,6 +373,18 @@ class TicketRepository(BaseRepository):
             updates["priority_before_sleep"] = (
                 priority_before_sleep.value if priority_before_sleep is not None else None
             )
+        if status_before is not UNSET:
+            updates["status_before"] = status_before.value if status_before is not None else None
+        if transfer_target_category is not UNSET:
+            updates["transfer_target_category"] = transfer_target_category
+        if transfer_initiated_by is not UNSET:
+            updates["transfer_initiated_by"] = transfer_initiated_by
+        if transfer_reason is not UNSET:
+            updates["transfer_reason"] = transfer_reason
+        if transfer_execute_at is not UNSET:
+            updates["transfer_execute_at"] = transfer_execute_at
+        if transfer_history_json is not UNSET:
+            updates["transfer_history_json"] = transfer_history_json
         if staff_panel_message_id is not UNSET:
             updates["staff_panel_message_id"] = staff_panel_message_id
 

@@ -46,6 +46,12 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert "last_user_message_at" in ticket_column_names
     assert "staff_panel_message_id" in ticket_column_names
     assert "priority_before_sleep" in ticket_column_names
+    assert "status_before" in ticket_column_names
+    assert "transfer_target_category" in ticket_column_names
+    assert "transfer_initiated_by" in ticket_column_names
+    assert "transfer_reason" in ticket_column_names
+    assert "transfer_execute_at" in ticket_column_names
+    assert "transfer_history_json" in ticket_column_names
 
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:

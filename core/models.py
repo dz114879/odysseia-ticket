@@ -20,6 +20,12 @@ class TicketRecord:
     claimed_by: int | None = None
     priority: TicketPriority = TicketPriority.MEDIUM
     priority_before_sleep: TicketPriority | None = None
+    status_before: TicketStatus | None = None
+    transfer_target_category: str | None = None
+    transfer_initiated_by: int | None = None
+    transfer_reason: str | None = None
+    transfer_execute_at: str | None = None
+    transfer_history_json: str = "[]"
     staff_panel_message_id: int | None = None
 
 

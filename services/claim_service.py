@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Iterable
-
-import discord
+from typing import Any, AsyncIterator
 
 from core.enums import ClaimMode, TicketStatus
 from core.errors import (
@@ -20,6 +17,7 @@ from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
+from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
 
 
@@ -43,12 +41,14 @@ class ClaimService:
         lock_manager: LockManager | None = None,
         guard_service: StaffGuardService | None = None,
         staff_panel_service: StaffPanelService | None = None,
+        permission_service: StaffPermissionService | None = None,
     ) -> None:
         self.database = database
         self.guild_repository = guild_repository or GuildRepository(database)
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.lock_manager = lock_manager
         self.staff_panel_service = staff_panel_service
+        self.permission_service = permission_service or StaffPermissionService()
         self.guard_service = guard_service or StaffGuardService(
             database,
             guild_repository=self.guild_repository,
@@ -246,115 +246,16 @@ class ClaimService:
         category: TicketCategoryConfig,
         active_claimer: Any | None,
     ) -> None:
-        guild = getattr(channel, "guild", None)
-        set_permissions = getattr(channel, "set_permissions", None)
-        if guild is None or set_permissions is None:
-            return
-
-        readable_overwrite = self._build_staff_overwrite(can_send=False)
-        writable_overwrite = self._build_staff_overwrite(can_send=True)
-        strict_mode = config.claim_mode is ClaimMode.STRICT
-
-        role_targets, member_targets = self._resolve_staff_targets(
-            guild,
+        await self.permission_service.apply_staff_overwrite_plan(
+            channel,
             config=config,
             category=category,
-        )
-
-        explicit_member_ids = {getattr(member, "id", None) for member in member_targets}
-        base_overwrite = readable_overwrite if strict_mode else writable_overwrite
-        for target in [*role_targets, *member_targets]:
-            await set_permissions(
-                target,
-                overwrite=base_overwrite,
-                reason="Recalculate staff participation for ticket claim state",
-            )
-
-        previous_claimer = None
-        if previous_claimer_id is not None:
-            get_member = getattr(guild, "get_member", None)
-            if callable(get_member):
-                previous_claimer = get_member(previous_claimer_id)
-
-        if previous_claimer is not None and previous_claimer_id not in explicit_member_ids:
-            await set_permissions(
-                previous_claimer,
-                overwrite=readable_overwrite if strict_mode else writable_overwrite,
-                reason="Normalize previous claimer override after claim state change",
-            )
-
-        active_claimer_id = getattr(active_claimer, "id", None)
-        if (
-            active_claimer is not None
-            and active_claimer_id is not None
-            and not strict_mode
-            and active_claimer_id not in explicit_member_ids
-            and active_claimer_id != previous_claimer_id
-        ):
-            await set_permissions(active_claimer, overwrite=base_overwrite, reason="Normalize current claimer override")
-
-        if strict_mode and active_claimer is not None:
-            await set_permissions(
-                active_claimer,
-                overwrite=writable_overwrite,
-                reason="Allow current claimer to speak in strict claim mode",
-            )
-
-    @staticmethod
-    def _resolve_staff_targets(
-        guild: Any,
-        *,
-        config: GuildConfigRecord,
-        category: TicketCategoryConfig,
-    ) -> tuple[list[Any], list[Any]]:
-        role_targets: list[Any] = []
-        member_targets: list[Any] = []
-
-        if config.admin_role_id is not None:
-            admin_role = guild.get_role(config.admin_role_id)
-            if admin_role is not None:
-                role_targets.append(admin_role)
-
-        if category.staff_role_id is not None:
-            staff_role = guild.get_role(category.staff_role_id)
-            if staff_role is not None:
-                role_targets.append(staff_role)
-
-        get_member = getattr(guild, "get_member", None)
-        if callable(get_member):
-            for staff_user_id in ClaimService._parse_staff_user_ids(category.staff_user_ids_json):
-                member = get_member(staff_user_id)
-                if member is not None:
-                    member_targets.append(member)
-
-        unique_roles: list[Any] = []
-        seen_role_ids: set[int] = set()
-        for role in role_targets:
-            role_id = getattr(role, "id", None)
-            if role_id is None or role_id in seen_role_ids:
-                continue
-            seen_role_ids.add(role_id)
-            unique_roles.append(role)
-
-        unique_members: list[Any] = []
-        seen_member_ids: set[int] = set()
-        for member in member_targets:
-            member_id = getattr(member, "id", None)
-            if member_id is None or member_id in seen_member_ids:
-                continue
-            seen_member_ids.add(member_id)
-            unique_members.append(member)
-
-        return unique_roles, unique_members
-
-    @staticmethod
-    def _build_staff_overwrite(*, can_send: bool) -> discord.PermissionOverwrite:
-        return discord.PermissionOverwrite(
-            view_channel=True,
-            send_messages=can_send,
-            read_message_history=True,
-            attach_files=can_send,
-            embed_links=can_send,
+            active_claimer=active_claimer,
+            previous_claimer_id=previous_claimer_id,
+            visible_reason="Recalculate staff participation for ticket claim state",
+            previous_claimer_reason="Normalize previous claimer override after claim state change",
+            active_claimer_reason="Normalize current claimer override",
+            strict_claimer_reason="Allow current claimer to speak in strict claim mode",
         )
 
     @staticmethod
@@ -363,30 +264,6 @@ class ClaimService:
         if send is None:
             return None
         return await send(content=content)
-
-    @staticmethod
-    def _parse_staff_user_ids(raw_value: str) -> list[int]:
-        try:
-            data = json.loads(raw_value or "[]")
-        except json.JSONDecodeError:
-            return []
-
-        values: list[int] = []
-        for item in data if isinstance(data, list) else []:
-            try:
-                values.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return values
-
-    @staticmethod
-    def _extract_role_ids(roles: Iterable[Any]) -> set[int]:
-        role_ids: set[int] = set()
-        for role in roles:
-            role_id = getattr(role, "id", None)
-            if role_id is not None:
-                role_ids.add(role_id)
-        return role_ids
 
     @asynccontextmanager
     async def _acquire_channel_lock(self, channel_id: int) -> AsyncIterator[None]:

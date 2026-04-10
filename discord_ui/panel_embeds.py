@@ -9,6 +9,7 @@ from config.defaults import (
     DEFAULT_PANEL_FOOTER_TEXT,
     DEFAULT_PANEL_TITLE,
 )
+from core.constants import TRANSFER_EXECUTION_DELAY_SECONDS
 from core.enums import ClaimMode, TicketPriority, TicketStatus
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 
@@ -67,7 +68,12 @@ def build_staff_control_panel_embed(
     embed.add_field(name="当前认领者", value=_format_claimer(ticket.claimed_by), inline=True)
     embed.add_field(name="最近用户消息", value=ticket.last_user_message_at or "暂无", inline=False)
     embed.add_field(name="创建时间", value=ticket.created_at or "未知", inline=False)
-    embed.set_footer(text="claim / unclaim / priority / help 已接入；更多 staff 面板动作将在后续阶段补齐。")
+    transfer_summary = _build_transfer_summary(ticket)
+    if transfer_summary is not None:
+        embed.add_field(name="转交信息", value=transfer_summary, inline=False)
+    embed.set_footer(
+        text="claim / unclaim / priority / sleep / transfer / untransfer / help 已接入；transfer 当前为延迟执行并可在窗口内撤销。"
+    )
     return embed
 
 
@@ -80,6 +86,18 @@ def _build_staff_panel_description(
         description = "当前 ticket 已进入 sleep 挂起状态，不占 active 容量；现有参与者权限保持不变。"
     elif ticket.status is TicketStatus.SUBMITTED:
         description = "当前 ticket 已提交，可通过 staff 命令继续处理。"
+    elif ticket.status is TicketStatus.TRANSFERRING:
+        target_text = f"`{ticket.transfer_target_category}`" if ticket.transfer_target_category else "目标分类"
+        execute_at_text = ticket.transfer_execute_at or "未设置"
+        restored_status_text = _format_status_label(ticket.status_before) if ticket.status_before is not None else "未知"
+        description = (
+            f"当前 ticket 正在发起跨分类转交，目标为 {target_text}。"
+            f"默认会在{_format_transfer_delay_text()}后自动执行；执行前可使用 `/ticket untransfer` 撤销。\n"
+            f"计划执行时间：{execute_at_text}\n"
+            f"执行完成后将恢复为：{restored_status_text}"
+        )
+        if ticket.transfer_reason:
+            description = f"{description}\n转交理由：{ticket.transfer_reason}"
     else:
         description = f"当前 ticket 状态为 { _format_status_label(ticket.status) }。"
 
@@ -91,6 +109,27 @@ def _build_staff_panel_description(
     ):
         return f"{description}\n当前为 strict claim mode，未认领前 staff 默认仅可见不可发言。"
     return f"{description}\n当前 claim mode：{_format_claim_mode_label(config.claim_mode)}。"
+
+
+def _build_transfer_summary(ticket: TicketRecord) -> str | None:
+    if ticket.status is not TicketStatus.TRANSFERRING:
+        return None
+
+    lines = [
+        f"- 目标分类：`{ticket.transfer_target_category or '未设置'}`",
+        f"- 计划执行时间：{ticket.transfer_execute_at or '未设置'}",
+        f"- 执行后恢复状态：{_format_status_label(ticket.status_before) if ticket.status_before is not None else '未知'}",
+    ]
+    if ticket.transfer_reason:
+        lines.append(f"- 转交理由：{ticket.transfer_reason}")
+    return "\n".join(lines)
+
+
+def _format_transfer_delay_text() -> str:
+    if TRANSFER_EXECUTION_DELAY_SECONDS % 60 == 0:
+        minutes = TRANSFER_EXECUTION_DELAY_SECONDS // 60
+        return "1 分钟" if minutes == 1 else f"{minutes} 分钟"
+    return f"{TRANSFER_EXECUTION_DELAY_SECONDS} 秒"
 
 
 def _format_category_lines(categories: list[TicketCategoryConfig]) -> str:

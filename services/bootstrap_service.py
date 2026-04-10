@@ -18,6 +18,7 @@ from services.draft_timeout_service import DraftTimeoutService
 from services.logging_service import LoggingService
 from services.sleep_service import SleepService
 from services.staff_panel_service import StaffPanelService
+from services.transfer_service import TransferService
 
 
 @dataclass(slots=True)
@@ -33,6 +34,7 @@ class BootstrapResources:
     cache: RuntimeCacheStore
     draft_timeout_service: DraftTimeoutService
     sleep_service: SleepService
+    transfer_service: TransferService
 
 
 class BootstrapService:
@@ -50,6 +52,7 @@ class BootstrapService:
         self.cache: RuntimeCacheStore | None = None
         self.draft_timeout_service: DraftTimeoutService | None = None
         self.sleep_service: SleepService | None = None
+        self.transfer_service: TransferService | None = None
 
     async def bootstrap(self) -> BootstrapResources:
         if self.resources is not None:
@@ -76,14 +79,23 @@ class BootstrapService:
             lock_manager=self.lock_manager,
             logger=self.logging_service.child("draft-timeout"),
         )
+        staff_panel_service = StaffPanelService(
+            self.database,
+            bot=self.bot,
+            debounce_manager=self.debounce_manager,
+        )
         self.sleep_service = SleepService(
             self.database,
             lock_manager=self.lock_manager,
-            staff_panel_service=StaffPanelService(
-                self.database,
-                bot=self.bot,
-                debounce_manager=self.debounce_manager,
-            ),
+            staff_panel_service=staff_panel_service,
+        )
+        self.transfer_service = TransferService(
+            self.database,
+            bot=self.bot,
+            lock_manager=self.lock_manager,
+            staff_panel_service=staff_panel_service,
+            logging_service=self.logging_service,
+            logger=self.logging_service.child("transfer"),
         )
 
         self.scheduler = BackgroundScheduler(
@@ -100,6 +112,10 @@ class BootstrapService:
             "ticket.draft_timeout_sweep",
             self._run_draft_timeout_sweep,
         )
+        self.scheduler.register_handler(
+            "ticket.transfer_execute_sweep",
+            self._run_transfer_execute_sweep,
+        )
         await self.scheduler.start()
 
         self.resources = BootstrapResources(
@@ -114,6 +130,7 @@ class BootstrapService:
             cache=self.cache,
             draft_timeout_service=self.draft_timeout_service,
             sleep_service=self.sleep_service,
+            transfer_service=self.transfer_service,
         )
 
         self.logging_service.log_local_info(
@@ -183,5 +200,16 @@ class BootstrapService:
         if outcomes:
             self.logging_service.log_local_info(
                 "Processed %s expired draft ticket(s).",
+                len(outcomes),
+            )
+
+    async def _run_transfer_execute_sweep(self) -> None:
+        if self.transfer_service is None or self.logging_service is None:
+            return
+
+        outcomes = await self.transfer_service.sweep_due_transfers()
+        if outcomes:
+            self.logging_service.log_local_info(
+                "Executed %s due transfer ticket(s).",
                 len(outcomes),
             )

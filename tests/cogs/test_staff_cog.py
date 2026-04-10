@@ -171,12 +171,30 @@ def prepared_staff_cog_context(migrated_database):
             sort_order=1,
         )
     )
+    guild_repository.upsert_category(
+        TicketCategoryConfig(
+            guild_id=1,
+            category_key="billing",
+            display_name="账单咨询",
+            emoji="💳",
+            description="处理账单问题",
+            staff_role_id=600,
+            staff_user_ids_json="[]",
+            extra_welcome_text="请提供账单编号。",
+            is_enabled=True,
+            allowlist_role_ids_json="[]",
+            denylist_role_ids_json="[]",
+            sort_order=2,
+        )
+    )
 
     admin_role = FakeRole(400)
     staff_role = FakeRole(500)
+    billing_role = FakeRole(600)
     guild = FakeGuild(1)
     guild.add_role(admin_role)
     guild.add_role(staff_role)
+    guild.add_role(billing_role)
 
     creator = FakeUser(201)
     staff_user = FakeUser(301, roles=[staff_role])
@@ -337,6 +355,80 @@ async def test_sleep_current_ticket_updates_status_and_returns_feedback(
 
 
 @pytest.mark.asyncio
+async def test_transfer_current_ticket_updates_status_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    ticket_repository = prepared_staff_cog_context["ticket_repository"]
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.transfer_current_ticket(
+        interaction,
+        target_category_key="billing",
+        reason="需要账单组处理",
+    )
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert interaction.response.messages
+    assert "ticket 已进入 transferring" in interaction.response.messages[0]["content"]
+    assert "账单咨询 (`billing`)" in interaction.response.messages[0]["content"]
+    assert "转交理由：需要账单组处理" in interaction.response.messages[0]["content"]
+    assert "计划执行时间：" in interaction.response.messages[0]["content"]
+    assert stored is not None
+    assert stored.status is TicketStatus.TRANSFERRING
+    assert stored.status_before is TicketStatus.SUBMITTED
+    assert stored.transfer_target_category == "billing"
+    assert stored.transfer_initiated_by == staff_user.id
+    assert stored.transfer_reason == "需要账单组处理"
+    assert stored.transfer_execute_at is not None
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket transfer initiated." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_untransfer_current_ticket_restores_previous_status_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    ticket_repository = prepared_staff_cog_context["ticket_repository"]
+    ticket_repository.update(
+        "1-support-0001",
+        status=TicketStatus.TRANSFERRING,
+        status_before=TicketStatus.SUBMITTED,
+        transfer_target_category="billing",
+        transfer_initiated_by=staff_user.id,
+        transfer_reason="需要账单组处理",
+    )
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.untransfer_current_ticket(interaction)
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert interaction.response.messages
+    assert "ticket 已撤销 transferring" in interaction.response.messages[0]["content"]
+    assert "恢复状态：submitted" in interaction.response.messages[0]["content"]
+    assert "原目标分类：`billing`" in interaction.response.messages[0]["content"]
+    assert stored is not None
+    assert stored.status is TicketStatus.SUBMITTED
+    assert stored.status_before is None
+    assert stored.transfer_target_category is None
+    assert stored.transfer_initiated_by is None
+    assert stored.transfer_reason is None
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket transfer cancelled." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
 async def test_set_current_ticket_priority_rejects_non_staff_user(prepared_staff_cog_context) -> None:
     bot = prepared_staff_cog_context["bot"]
     guild = prepared_staff_cog_context["guild"]
@@ -370,7 +462,9 @@ async def test_show_ticket_help_returns_command_summary_in_submitted_channel(
     assert "/ticket claim" in content
     assert "/ticket priority" in content
     assert "/ticket sleep" in content
-    assert "draft / submitted" in content
+    assert "/ticket transfer" in content
+    assert "/ticket untransfer" in content
+    assert "当前 ticket 频道" in content
     assert bot.resources.logging_service.info_messages
     assert "Ticket help requested." in bot.resources.logging_service.info_messages[0]
 
@@ -446,6 +540,7 @@ async def test_staff_panel_help_button_returns_shared_help_text(prepared_staff_c
 
     assert interaction.response.messages
     assert interaction.response.messages[0]["content"] == build_ticket_help_message()
+    assert "自动执行" in interaction.response.messages[0]["content"]
 
 
 @pytest.mark.asyncio

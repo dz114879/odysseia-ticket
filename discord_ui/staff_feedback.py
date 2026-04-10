@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from services.claim_service import ClaimMutationResult
     from services.priority_service import PriorityUpdateResult
     from services.sleep_service import SleepMutationResult
+    from services.transfer_service import TransferCancellationResult, TransferMutationResult
 
 
 def build_claim_success_message(result: ClaimMutationResult) -> str:
@@ -70,6 +71,33 @@ def build_sleep_success_message(result: SleepMutationResult) -> str:
         f"- 旧频道名：`{result.old_channel_name}`\n"
         f"- 新频道名：`{result.new_channel_name}`"
     )
+
+
+def build_transfer_success_message(result: TransferMutationResult) -> str:
+    message = (
+        "ticket 已进入 transferring。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 原状态：{result.previous_status.value}\n"
+        f"- 目标分类：{result.target_category.display_name} (`{result.target_category.category_key}`)\n"
+        f"- 计划执行时间：{result.execute_at or '未设置'}\n"
+        "- 如需撤销，请在执行前使用 `/ticket untransfer`"
+    )
+    if result.reason is None:
+        return message
+    return f"{message}\n- 转交理由：{result.reason}"
+
+
+def build_untransfer_success_message(result: TransferCancellationResult) -> str:
+    message = (
+        "ticket 已撤销 transferring。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 恢复状态：{result.restored_status.value}"
+    )
+    if result.previous_target_category_key is not None:
+        message = f"{message}\n- 原目标分类：`{result.previous_target_category_key}`"
+    if result.reason is None:
+        return message
+    return f"{message}\n- 原转交理由：{result.reason}"
 
 
 def _get_priority_label(priority: TicketPriority) -> str:
