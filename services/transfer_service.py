@@ -13,6 +13,7 @@ from core.errors import PermissionDeniedError, ValidationError
 from core.models import GuildConfigRecord, TicketCategoryConfig
 from db.connection import DatabaseManager
 from db.repositories.guild_repository import GuildRepository
+from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.logging_service import LoggingService
@@ -72,6 +73,7 @@ class TransferService:
         guild_repository: GuildRepository | None = None,
         ticket_repository: TicketRepository | None = None,
         lock_manager: LockManager | None = None,
+        ticket_mute_repository: TicketMuteRepository | None = None,
         staff_panel_service: StaffPanelService | None = None,
         logging_service: LoggingService | None = None,
         logger: logging.Logger | None = None,
@@ -83,6 +85,7 @@ class TransferService:
         self.guild_repository = guild_repository or GuildRepository(database)
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.lock_manager = lock_manager
+        self.ticket_mute_repository = ticket_mute_repository or TicketMuteRepository(database)
         self.staff_panel_service = staff_panel_service
         self.logging_service = logging_service
         self.logger = logger or logging.getLogger(__name__)
@@ -338,6 +341,7 @@ class TransferService:
                         config=config,
                         previous_category=previous_category,
                         target_category=target_category,
+                        ticket=updated_ticket,
                         previous_claimer_id=ticket.claimed_by,
                     )
                 except Exception:
@@ -547,17 +551,43 @@ class TransferService:
         config: GuildConfigRecord,
         previous_category: TicketCategoryConfig | None,
         target_category: TicketCategoryConfig,
+        ticket: Any,
         previous_claimer_id: int | None,
     ) -> None:
-        await self.permission_service.apply_staff_overwrite_plan(
+        creator = self._resolve_channel_member(channel, getattr(ticket, "creator_id", 0))
+        muted_participants = self._resolve_muted_participants(channel, ticket.ticket_id)
+        await self.permission_service.apply_ticket_permissions(
             channel,
             config=config,
             category=target_category,
+            creator=creator,
+            participants=muted_participants,
+            muted_participants=muted_participants,
             previous_claimer_id=previous_claimer_id,
             hidden_categories=(previous_category,),
             visible_reason="Grant new category staff access after ticket transfer execution",
             hidden_reason="Hide previous category staff after ticket transfer execution",
         )
+
+    def _resolve_muted_participants(self, channel: Any, ticket_id: str) -> list[Any]:
+        return [
+            member
+            for member in (
+                self._resolve_channel_member(channel, record.user_id)
+                for record in self.ticket_mute_repository.list_by_ticket(ticket_id)
+            )
+            if member is not None
+        ]
+
+    @staticmethod
+    def _resolve_channel_member(channel: Any, user_id: int) -> Any | None:
+        guild = getattr(channel, "guild", None)
+        if guild is None:
+            return None
+        get_member = getattr(guild, "get_member", None)
+        if not callable(get_member):
+            return None
+        return get_member(user_id)
 
     async def _send_transfer_completion_log(
         self,

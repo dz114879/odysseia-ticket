@@ -14,8 +14,10 @@ from runtime.cooldowns import CooldownManager
 from runtime.debounce import DebounceManager
 from runtime.locks import LockManager
 from runtime.scheduler import BackgroundScheduler
+from services.close_service import CloseService
 from services.draft_timeout_service import DraftTimeoutService
 from services.logging_service import LoggingService
+from services.moderation_service import ModerationService
 from services.sleep_service import SleepService
 from services.staff_panel_service import StaffPanelService
 from services.transfer_service import TransferService
@@ -34,7 +36,9 @@ class BootstrapResources:
     cache: RuntimeCacheStore
     draft_timeout_service: DraftTimeoutService
     sleep_service: SleepService
+    moderation_service: ModerationService
     transfer_service: TransferService
+    close_service: CloseService
 
 
 class BootstrapService:
@@ -52,7 +56,9 @@ class BootstrapService:
         self.cache: RuntimeCacheStore | None = None
         self.draft_timeout_service: DraftTimeoutService | None = None
         self.sleep_service: SleepService | None = None
+        self.moderation_service: ModerationService | None = None
         self.transfer_service: TransferService | None = None
+        self.close_service: CloseService | None = None
 
     async def bootstrap(self) -> BootstrapResources:
         if self.resources is not None:
@@ -89,6 +95,13 @@ class BootstrapService:
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
         )
+        self.moderation_service = ModerationService(
+            self.database,
+            bot=self.bot,
+            lock_manager=self.lock_manager,
+            staff_panel_service=staff_panel_service,
+            logger=self.logging_service.child("moderation"),
+        )
         self.transfer_service = TransferService(
             self.database,
             bot=self.bot,
@@ -96,6 +109,13 @@ class BootstrapService:
             staff_panel_service=staff_panel_service,
             logging_service=self.logging_service,
             logger=self.logging_service.child("transfer"),
+        )
+        self.close_service = CloseService(
+            self.database,
+            bot=self.bot,
+            lock_manager=self.lock_manager,
+            staff_panel_service=staff_panel_service,
+            logger=self.logging_service.child("close"),
         )
 
         self.scheduler = BackgroundScheduler(
@@ -116,6 +136,14 @@ class BootstrapService:
             "ticket.transfer_execute_sweep",
             self._run_transfer_execute_sweep,
         )
+        self.scheduler.register_handler(
+            "ticket.mute_expire_sweep",
+            self._run_mute_expire_sweep,
+        )
+        self.scheduler.register_handler(
+            "ticket.close_archive_sweep",
+            self._run_close_archive_sweep,
+        )
         await self.scheduler.start()
 
         self.resources = BootstrapResources(
@@ -130,7 +158,9 @@ class BootstrapService:
             cache=self.cache,
             draft_timeout_service=self.draft_timeout_service,
             sleep_service=self.sleep_service,
+            moderation_service=self.moderation_service,
             transfer_service=self.transfer_service,
+            close_service=self.close_service,
         )
 
         self.logging_service.log_local_info(
@@ -211,5 +241,27 @@ class BootstrapService:
         if outcomes:
             self.logging_service.log_local_info(
                 "Executed %s due transfer ticket(s).",
+                len(outcomes),
+            )
+
+    async def _run_mute_expire_sweep(self) -> None:
+        if self.moderation_service is None or self.logging_service is None:
+            return
+
+        outcomes = await self.moderation_service.sweep_expired_mutes()
+        if outcomes:
+            self.logging_service.log_local_info(
+                "Expired %s ticket mute(s).",
+                len(outcomes),
+            )
+
+    async def _run_close_archive_sweep(self) -> None:
+        if self.close_service is None or self.logging_service is None:
+            return
+
+        outcomes = await self.close_service.sweep_due_closing_tickets()
+        if outcomes:
+            self.logging_service.log_local_info(
+                "Processed %s ticket close/archive flow(s).",
                 len(outcomes),
             )

@@ -27,6 +27,24 @@ class TicketRecord:
     transfer_execute_at: str | None = None
     transfer_history_json: str = "[]"
     staff_panel_message_id: int | None = None
+    close_reason: str | None = None
+    close_initiated_by: int | None = None
+    close_execute_at: str | None = None
+    closed_at: str | None = None
+    archive_message_id: int | None = None
+    archived_at: str | None = None
+    message_count: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TicketMuteRecord:
+    ticket_id: str
+    user_id: int
+    muted_by: int
+    reason: str | None = None
+    expire_at: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
 
 
 @dataclass(frozen=True, slots=True)

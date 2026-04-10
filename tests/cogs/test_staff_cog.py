@@ -7,8 +7,9 @@ import pytest
 
 from cogs.staff_cog import StaffCog
 from core.enums import ClaimMode, TicketPriority, TicketStatus
-from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
+from core.models import GuildConfigRecord, TicketCategoryConfig, TicketMuteRecord, TicketRecord
 from db.repositories.guild_repository import GuildRepository
+from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from discord_ui.help_text import build_ticket_help_message
 from discord_ui.staff_panel_view import StaffPanelView, build_staff_panel_custom_id
@@ -25,6 +26,7 @@ class FakeUser:
     id: int
     roles: list[FakeRole] = field(default_factory=list)
     administrator: bool = False
+    bot: bool = False
 
     @property
     def guild_permissions(self) -> SimpleNamespace:
@@ -80,6 +82,7 @@ class FakeChannel:
 class FakeResponse:
     def __init__(self) -> None:
         self.messages: list[dict[str, object]] = []
+        self.deferred: list[dict[str, object]] = []
         self._done = False
 
     def is_done(self) -> bool:
@@ -88,6 +91,10 @@ class FakeResponse:
     async def send_message(self, content: str, *, ephemeral: bool) -> None:
         self._done = True
         self.messages.append({"content": content, "ephemeral": ephemeral})
+
+    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
+        self._done = True
+        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
 
 
 class FakeFollowup:
@@ -135,6 +142,13 @@ class FakeInteraction:
         self.followup = FakeFollowup()
 
 
+def assert_deferred_ephemeral_followup(interaction: FakeInteraction) -> dict[str, object]:
+    assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert interaction.followup.messages
+    assert interaction.followup.messages[0]["ephemeral"] is True
+    return interaction.followup.messages[0]
+
+
 @pytest.fixture
 def prepared_staff_cog_context(migrated_database):
     guild_repository = GuildRepository(migrated_database)
@@ -163,7 +177,7 @@ def prepared_staff_cog_context(migrated_database):
             emoji="🛠️",
             description="处理技术问题",
             staff_role_id=500,
-            staff_user_ids_json="[]",
+            staff_user_ids_json="[302]",
             extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
@@ -198,9 +212,10 @@ def prepared_staff_cog_context(migrated_database):
 
     creator = FakeUser(201)
     staff_user = FakeUser(301, roles=[staff_role])
+    explicit_staff_user = FakeUser(302)
     outsider = FakeUser(999)
     admin_user = FakeUser(401, roles=[admin_role])
-    for member in (creator, staff_user, outsider, admin_user):
+    for member in (creator, staff_user, explicit_staff_user, outsider, admin_user):
         guild.add_member(member)
 
     channel = FakeChannel(9001, guild, name="ticket-0001-login-error")
@@ -226,6 +241,7 @@ def prepared_staff_cog_context(migrated_database):
         "channel": channel,
         "creator": creator,
         "staff_user": staff_user,
+        "explicit_staff_user": explicit_staff_user,
         "outsider": outsider,
         "admin_user": admin_user,
         "ticket_repository": ticket_repository,
@@ -248,10 +264,10 @@ async def test_claim_current_ticket_updates_ticket_and_returns_feedback(
     await cog.claim_current_ticket(interaction)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
 
-    assert interaction.response.messages
-    assert "ticket 已认领" in interaction.response.messages[0]["content"]
-    assert f"<@{staff_user.id}>" in interaction.response.messages[0]["content"]
+    assert "ticket 已认领" in feedback["content"]
+    assert f"<@{staff_user.id}>" in feedback["content"]
     assert stored is not None
     assert stored.claimed_by == staff_user.id
     assert bot.resources.logging_service.info_messages
@@ -269,8 +285,8 @@ async def test_claim_current_ticket_rejects_non_staff_user(prepared_staff_cog_co
 
     await cog.claim_current_ticket(interaction)
 
-    assert interaction.response.messages
-    assert "只有当前分类 staff" in interaction.response.messages[0]["content"]
+    feedback = assert_deferred_ephemeral_followup(interaction)
+    assert "只有当前分类 staff" in feedback["content"]
 
 
 @pytest.mark.asyncio
@@ -289,13 +305,129 @@ async def test_unclaim_current_ticket_returns_feedback_for_current_claimer(
     await cog.unclaim_current_ticket(interaction)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
 
-    assert interaction.response.messages
-    assert "ticket 已取消认领" in interaction.response.messages[0]["content"]
+    assert "ticket 已取消认领" in feedback["content"]
     assert stored is not None
     assert stored.claimed_by is None
     assert bot.resources.logging_service.info_messages
     assert "Ticket unclaimed." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_transfer_claim_current_ticket_updates_ticket_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    explicit_staff_user = prepared_staff_cog_context["explicit_staff_user"]
+    ticket_repository = prepared_staff_cog_context["ticket_repository"]
+    ticket_repository.update("1-support-0001", claimed_by=staff_user.id)
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.transfer_claim_current_ticket(interaction, member=explicit_staff_user)
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
+
+    assert "ticket 认领已转交" in feedback["content"]
+    assert f"<@{staff_user.id}>" in feedback["content"]
+    assert f"<@{explicit_staff_user.id}>" in feedback["content"]
+    assert stored is not None
+    assert stored.claimed_by == explicit_staff_user.id
+    assert channel.sent_messages
+    assert "转交给" in channel.sent_messages[0]
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket claim transferred." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_rename_current_ticket_updates_channel_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    ticket_repository = prepared_staff_cog_context["ticket_repository"]
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.rename_current_ticket(interaction, title="登录异常 复现")
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
+
+    assert "ticket 标题已更新" in feedback["content"]
+    assert "ticket-0001-登录异常-复现" in feedback["content"]
+    assert channel.name == "ticket-0001-登录异常-复现"
+    assert channel.edit_calls[0]["reason"] == "Rename ticket 1-support-0001 in submitted state"
+    assert stored is not None
+    assert stored.status is TicketStatus.SUBMITTED
+    assert channel.sent_messages
+    assert "已修改 ticket" in channel.sent_messages[0]
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket renamed." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_mute_current_ticket_updates_permissions_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    creator = prepared_staff_cog_context["creator"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    mute_repository = TicketMuteRepository(bot.resources.database)
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.mute_current_ticket(interaction, member=creator, duration="30m", reason="冷静期")
+
+    stored = mute_repository.get_by_ticket_and_user("1-support-0001", creator.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
+
+    assert "ticket mute 已生效" in feedback["content"]
+    assert "<@201>" in feedback["content"]
+    assert stored is not None
+    assert stored.reason == "冷静期"
+    assert channel.permission_calls[-1]["target_id"] == creator.id
+    assert channel.permission_calls[-1]["overwrite"].send_messages is False
+    assert channel.sent_messages
+    assert "执行禁言" in channel.sent_messages[0]
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket participant muted." in bot.resources.logging_service.info_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_unmute_current_ticket_restores_permissions_and_returns_feedback(
+    prepared_staff_cog_context,
+) -> None:
+    bot = prepared_staff_cog_context["bot"]
+    guild = prepared_staff_cog_context["guild"]
+    channel = prepared_staff_cog_context["channel"]
+    creator = prepared_staff_cog_context["creator"]
+    staff_user = prepared_staff_cog_context["staff_user"]
+    mute_repository = TicketMuteRepository(bot.resources.database)
+    mute_repository.upsert(TicketMuteRecord(ticket_id="1-support-0001", user_id=creator.id, muted_by=staff_user.id))
+    cog = StaffCog(bot)
+    interaction = FakeInteraction(guild, channel, staff_user)
+
+    await cog.unmute_current_ticket(interaction, member=creator)
+    feedback = assert_deferred_ephemeral_followup(interaction)
+
+    assert "ticket mute 已解除" in feedback["content"]
+    assert mute_repository.get_by_ticket_and_user("1-support-0001", creator.id) is None
+    assert channel.permission_calls[-1]["target_id"] == creator.id
+    assert channel.permission_calls[-1]["overwrite"].send_messages is True
+    assert channel.sent_messages
+    assert "已解除 ticket" in channel.sent_messages[0]
+    assert bot.resources.logging_service.info_messages
+    assert "Ticket participant unmuted." in bot.resources.logging_service.info_messages[0]
 
 
 @pytest.mark.asyncio
@@ -313,10 +445,10 @@ async def test_set_current_ticket_priority_updates_channel_name_and_feedback(
     await cog.set_current_ticket_priority(interaction, priority=TicketPriority.EMERGENCY)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
 
-    assert interaction.response.messages
-    assert "ticket 优先级已更新" in interaction.response.messages[0]["content"]
-    assert "紧急" in interaction.response.messages[0]["content"]
+    assert "ticket 优先级已更新" in feedback["content"]
+    assert "紧急" in feedback["content"]
     assert channel.name == "‼️|ticket-0001-login-error"
     assert channel.edit_calls[0]["reason"] == "Set ticket 1-support-0001 priority to emergency"
     assert stored is not None
@@ -340,10 +472,10 @@ async def test_sleep_current_ticket_updates_status_and_returns_feedback(
     await cog.sleep_current_ticket(interaction)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
 
-    assert interaction.response.messages
-    assert "ticket 已进入 sleep" in interaction.response.messages[0]["content"]
-    assert "睡前优先级：中 🟡" in interaction.response.messages[0]["content"]
+    assert "ticket 已进入 sleep" in feedback["content"]
+    assert "睡前优先级：中 🟡" in feedback["content"]
     assert channel.name == "💤|ticket-0001-login-error"
     assert channel.edit_calls[0]["reason"] == "Put ticket 1-support-0001 to sleep"
     assert stored is not None
@@ -373,12 +505,12 @@ async def test_transfer_current_ticket_updates_status_and_returns_feedback(
     )
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
 
-    assert interaction.response.messages
-    assert "ticket 已进入 transferring" in interaction.response.messages[0]["content"]
-    assert "账单咨询 (`billing`)" in interaction.response.messages[0]["content"]
-    assert "转交理由：需要账单组处理" in interaction.response.messages[0]["content"]
-    assert "计划执行时间：" in interaction.response.messages[0]["content"]
+    assert "ticket 已进入 transferring" in feedback["content"]
+    assert "账单咨询 (`billing`)" in feedback["content"]
+    assert "转交理由：需要账单组处理" in feedback["content"]
+    assert "计划执行时间：" in feedback["content"]
     assert stored is not None
     assert stored.status is TicketStatus.TRANSFERRING
     assert stored.status_before is TicketStatus.SUBMITTED
@@ -413,11 +545,11 @@ async def test_untransfer_current_ticket_restores_previous_status_and_returns_fe
     await cog.untransfer_current_ticket(interaction)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
 
-    assert interaction.response.messages
-    assert "ticket 已撤销 transferring" in interaction.response.messages[0]["content"]
-    assert "恢复状态：submitted" in interaction.response.messages[0]["content"]
-    assert "原目标分类：`billing`" in interaction.response.messages[0]["content"]
+    assert "ticket 已撤销 transferring" in feedback["content"]
+    assert "恢复状态：submitted" in feedback["content"]
+    assert "原目标分类：`billing`" in feedback["content"]
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
     assert stored.status_before is None
@@ -439,8 +571,8 @@ async def test_set_current_ticket_priority_rejects_non_staff_user(prepared_staff
 
     await cog.set_current_ticket_priority(interaction, priority=TicketPriority.HIGH)
 
-    assert interaction.response.messages
-    assert "只有当前分类 staff" in interaction.response.messages[0]["content"]
+    feedback = assert_deferred_ephemeral_followup(interaction)
+    assert "只有当前分类 staff" in feedback["content"]
 
 
 @pytest.mark.asyncio
@@ -462,6 +594,10 @@ async def test_show_ticket_help_returns_command_summary_in_submitted_channel(
     assert "/ticket claim" in content
     assert "/ticket priority" in content
     assert "/ticket sleep" in content
+    assert "/ticket rename" in content
+    assert "/ticket mute" in content
+    assert "/ticket unmute" in content
+    assert "/ticket transfer-claim" in content
     assert "/ticket transfer" in content
     assert "/ticket untransfer" in content
     assert "当前 ticket 频道" in content
@@ -517,10 +653,10 @@ async def test_staff_panel_claim_button_updates_ticket_and_returns_feedback(
     await claim_button.callback(interaction)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
     assert stored is not None
     assert stored.claimed_by == staff_user.id
-    assert interaction.response.messages
-    assert "ticket 已认领" in interaction.response.messages[0]["content"]
+    assert "ticket 已认领" in feedback["content"]
 
 
 @pytest.mark.asyncio
@@ -563,12 +699,12 @@ async def test_staff_panel_priority_select_updates_ticket_and_returns_feedback(
     await priority_select.callback(interaction)
 
     stored = ticket_repository.get_by_channel_id(channel.id)
+    feedback = assert_deferred_ephemeral_followup(interaction)
     assert stored is not None
     assert stored.priority is TicketPriority.HIGH
     assert channel.name == "🔴|ticket-0001-login-error"
-    assert interaction.response.messages
-    assert "ticket 优先级已更新" in interaction.response.messages[0]["content"]
-    assert "高" in interaction.response.messages[0]["content"]
+    assert "ticket 优先级已更新" in feedback["content"]
+    assert "高" in feedback["content"]
 
 
 @pytest.mark.asyncio

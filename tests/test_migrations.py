@@ -17,6 +17,7 @@ EXPECTED_TABLES = {
     "guild_configs",
     "ticket_categories",
     "panels",
+    "ticket_mutes",
     "ticket_counters",
     SCHEMA_VERSION_TABLE,
 }
@@ -52,6 +53,13 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert "transfer_reason" in ticket_column_names
     assert "transfer_execute_at" in ticket_column_names
     assert "transfer_history_json" in ticket_column_names
+    assert "close_reason" in ticket_column_names
+    assert "close_initiated_by" in ticket_column_names
+    assert "close_execute_at" in ticket_column_names
+    assert "closed_at" in ticket_column_names
+    assert "archive_message_id" in ticket_column_names
+    assert "archived_at" in ticket_column_names
+    assert "message_count" in ticket_column_names
 
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:

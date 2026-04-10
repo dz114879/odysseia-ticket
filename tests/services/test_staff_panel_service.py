@@ -11,7 +11,7 @@ from core.errors import StaleInteractionError
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
-from discord_ui.staff_panel_view import StaffPanelView
+from discord_ui.staff_panel_view import StaffPanelView, build_staff_panel_custom_id
 from runtime.debounce import DebounceManager
 from services.staff_panel_service import StaffPanelService
 
@@ -72,6 +72,12 @@ class FakeBot:
         if self.channel.id != channel_id:
             raise LookupError("channel not found")
         return self.channel
+
+
+def get_panel_child(view: StaffPanelView, action: str):
+    return next(
+        child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id(action)
+    )
 
 
 @pytest.fixture
@@ -173,6 +179,10 @@ async def test_refresh_now_updates_staff_panel_embed_with_latest_ticket_state(
     assert fields["当前认领者"] == "<@301>"
     assert fields["最近用户消息"] == "2024-01-01T01:00:00+00:00"
     assert fields["分类"] == "技术支持"
+    assert get_panel_child(message.view, "claim").disabled is False
+    assert get_panel_child(message.view, "unclaim").disabled is False
+    assert get_panel_child(message.view, "priority").disabled is False
+    assert get_panel_child(message.view, "help").disabled is False
 
 
 @pytest.mark.asyncio
@@ -199,6 +209,11 @@ async def test_refresh_now_renders_sleep_status_and_previous_priority(
     assert fields["状态"] == "sleep 挂起中"
     assert fields["优先级"] == "挂起 💤（睡前：高 🔴）"
     assert "sleep 挂起状态" in (message.embed.description or "")
+    assert "已禁用认领 / 取消认领 / 优先级控件" in (message.embed.description or "")
+    assert get_panel_child(message.view, "claim").disabled is True
+    assert get_panel_child(message.view, "unclaim").disabled is True
+    assert get_panel_child(message.view, "priority").disabled is True
+    assert get_panel_child(message.view, "help").disabled is False
 
 
 @pytest.mark.asyncio
@@ -230,9 +245,14 @@ async def test_refresh_now_renders_transferring_status_with_target_category(
     assert "5 分钟后自动执行" in (message.embed.description or "")
     assert "计划执行时间：2024-01-01T00:05:00+00:00" in (message.embed.description or "")
     assert "`billing`" in (message.embed.description or "")
+    assert "已禁用认领 / 取消认领 / 优先级控件" in (message.embed.description or "")
     assert "计划执行时间：2024-01-01T00:05:00+00:00" in fields["转交信息"]
     assert "/ticket untransfer" in (message.embed.description or "")
     assert "untransfer" in (message.embed.footer.text or "")
+    assert get_panel_child(message.view, "claim").disabled is True
+    assert get_panel_child(message.view, "unclaim").disabled is True
+    assert get_panel_child(message.view, "priority").disabled is True
+    assert get_panel_child(message.view, "help").disabled is False
 
 
 @pytest.mark.asyncio

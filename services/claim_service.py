@@ -90,7 +90,7 @@ class ClaimService:
 
             if context.ticket.claimed_by is not None:
                 raise ValidationError(
-                    f"该 ticket 已被 <@{context.ticket.claimed_by}> 认领；如需转交，请等待后续 `/ticket transfer-claim`。"
+                    f"该 ticket 已被 <@{context.ticket.claimed_by}> 认领；如需转交，请使用 `/ticket transfer-claim`。"
                 )
 
             updated_ticket = self.ticket_repository.update(
@@ -115,6 +115,92 @@ class ClaimService:
                 previous_claimer_id=context.ticket.claimed_by,
                 changed=True,
                 forced=False,
+                strict_mode=context.config.claim_mode is ClaimMode.STRICT,
+                log_message=log_message,
+            )
+
+    async def transfer_claim(
+        self,
+        channel: Any,
+        *,
+        actor: Any,
+        target: Any,
+        is_bot_owner: bool = False,
+    ) -> ClaimMutationResult:
+        channel_id = getattr(channel, "id", None)
+        actor_id = getattr(actor, "id", None)
+        target_id = getattr(target, "id", None)
+        if channel_id is None:
+            raise ValidationError("当前频道不支持 ticket transfer-claim。")
+        if actor_id is None:
+            raise ValidationError("无法识别当前操作人的身份。")
+        if target_id is None:
+            raise ValidationError("无法识别要转交给哪位 staff。")
+
+        async with self._acquire_channel_lock(channel_id):
+            context = self._load_ticket_context(channel_id)
+            self._assert_staff_actor(
+                actor,
+                config=context.config,
+                category=context.category,
+                is_bot_owner=is_bot_owner,
+            )
+
+            if context.ticket.claimed_by is None:
+                raise ValidationError("当前 ticket 尚未被认领，请先使用 `/ticket claim`。")
+
+            forced = context.ticket.claimed_by != actor_id
+            if forced and not self._is_ticket_admin(
+                actor,
+                config=context.config,
+                is_bot_owner=is_bot_owner,
+            ):
+                raise PermissionDeniedError("只有当前认领者或 Ticket 管理员可以转交认领。")
+
+            if not self._is_current_category_staff(target, category=context.category):
+                raise ValidationError("认领只能转交给当前分类的合法 staff。")
+
+            if context.ticket.claimed_by == target_id:
+                return ClaimMutationResult(
+                    ticket=context.ticket,
+                    previous_claimer_id=context.ticket.claimed_by,
+                    changed=False,
+                    forced=forced,
+                    strict_mode=context.config.claim_mode is ClaimMode.STRICT,
+                    log_message=None,
+                )
+
+            previous_claimer_id = context.ticket.claimed_by
+            updated_ticket = self.ticket_repository.update(
+                context.ticket.ticket_id,
+                claimed_by=target_id,
+            ) or context.ticket
+            await self._sync_staff_permissions(
+                channel=channel,
+                config=context.config,
+                category=context.category,
+                previous_claimer_id=previous_claimer_id,
+                active_claimer=target,
+            )
+
+            if forced:
+                content = (
+                    f"🔁 <@{actor_id}> 已将 ticket `{updated_ticket.ticket_id}` 的认领从 "
+                    f"<@{previous_claimer_id}> 转交给 <@{target_id}>。"
+                )
+            else:
+                content = (
+                    f"🔁 <@{actor_id}> 已将 ticket `{updated_ticket.ticket_id}` 的认领转交给 "
+                    f"<@{target_id}>。"
+                )
+            log_message = await self._send_channel_log(channel, content=content)
+            if self.staff_panel_service is not None:
+                self.staff_panel_service.request_refresh(updated_ticket.ticket_id)
+            return ClaimMutationResult(
+                ticket=updated_ticket,
+                previous_claimer_id=previous_claimer_id,
+                changed=True,
+                forced=forced,
                 strict_mode=context.config.claim_mode is ClaimMode.STRICT,
                 log_message=log_message,
             )
@@ -228,6 +314,20 @@ class ClaimService:
             is_bot_owner=is_bot_owner,
         )
 
+    def _is_current_category_staff(
+        self,
+        actor: Any,
+        *,
+        category: TicketCategoryConfig,
+    ) -> bool:
+        actor_id = getattr(actor, "id", None)
+        if actor_id is None:
+            return False
+        if actor_id in set(self.guard_service._parse_staff_user_ids(category.staff_user_ids_json)):
+            return True
+        role_ids = self.guard_service._extract_role_ids(getattr(actor, "roles", []))
+        return category.staff_role_id is not None and category.staff_role_id in role_ids
+
     def _is_ticket_admin(
         self,
         actor: Any,
@@ -246,8 +346,9 @@ class ClaimService:
         category: TicketCategoryConfig,
         active_claimer: Any | None,
     ) -> None:
-        await self.permission_service.apply_staff_overwrite_plan(
+        await self.permission_service.apply_ticket_permissions(
             channel,
+            include_participants=False,
             config=config,
             category=category,
             active_claimer=active_claimer,

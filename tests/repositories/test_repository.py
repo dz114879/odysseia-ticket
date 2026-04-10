@@ -3,9 +3,10 @@ from __future__ import annotations
 import pytest
 
 from core.enums import ClaimMode, TicketPriority, TicketStatus
-from core.models import GuildConfigRecord, TicketRecord
+from core.models import GuildConfigRecord, TicketMuteRecord, TicketRecord
 from db.repositories.counter_repository import CounterRepository
 from db.repositories.guild_repository import GuildRepository
+from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 
 
@@ -47,6 +48,7 @@ def test_repositories_share_connection_for_multi_repository_unit_of_work(
     guild_repository = GuildRepository(migrated_database)
     ticket_repository = TicketRepository(migrated_database)
     counter_repository = CounterRepository(migrated_database)
+    ticket_mute_repository = TicketMuteRepository(migrated_database)
 
     with migrated_database.session() as connection:
         stored_config = guild_repository.upsert_config(
@@ -61,6 +63,14 @@ def test_repositories_share_connection_for_multi_repository_unit_of_work(
             42,
             "support",
             step=2,
+            connection=connection,
+        )
+        stored_mute = ticket_mute_repository.upsert(
+            TicketMuteRecord(
+                ticket_id=stored_ticket.ticket_id,
+                user_id=123,
+                muted_by=789,
+            ),
             connection=connection,
         )
 
@@ -80,10 +90,15 @@ def test_repositories_share_connection_for_multi_repository_unit_of_work(
             )
             == incremented_counter
         )
+        assert (
+            ticket_mute_repository.get_by_ticket_and_user(stored_ticket.ticket_id, 123, connection=connection)
+            == stored_mute
+        )
 
     assert guild_repository.get_config(42) == stored_config
     assert ticket_repository.get_by_ticket_id("ticket-connection") == stored_ticket
     assert counter_repository.get_counter(42, "support") == incremented_counter
+    assert ticket_mute_repository.get_by_ticket_and_user(stored_ticket.ticket_id, 123) == stored_mute
 
 
 
@@ -93,6 +108,7 @@ def test_repositories_rollback_changes_when_outer_transaction_fails(
     guild_repository = GuildRepository(migrated_database)
     ticket_repository = TicketRepository(migrated_database)
     counter_repository = CounterRepository(migrated_database)
+    ticket_mute_repository = TicketMuteRepository(migrated_database)
 
     with pytest.raises(RuntimeError, match="rollback marker"):
         with migrated_database.session() as connection:
@@ -107,6 +123,14 @@ def test_repositories_rollback_changes_when_outer_transaction_fails(
             counter_repository.increment(
                 7,
                 "billing",
+                connection=connection,
+            )
+            ticket_mute_repository.upsert(
+                TicketMuteRecord(
+                    ticket_id="ticket-rollback",
+                    user_id=456,
+                    muted_by=789,
+                ),
                 connection=connection,
             )
 
@@ -126,9 +150,18 @@ def test_repositories_rollback_changes_when_outer_transaction_fails(
                 )
                 is not None
             )
+            assert (
+                ticket_mute_repository.get_by_ticket_and_user(
+                    "ticket-rollback",
+                    456,
+                    connection=connection,
+                )
+                is not None
+            )
 
             raise RuntimeError("rollback marker")
 
     assert guild_repository.get_config(7) is None
     assert ticket_repository.get_by_ticket_id("ticket-rollback") is None
     assert counter_repository.get_counter(7, "billing") is None
+    assert ticket_mute_repository.get_by_ticket_and_user("ticket-rollback", 456) is None

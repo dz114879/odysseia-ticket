@@ -8,11 +8,15 @@ from core.constants import SLEEP_CHANNEL_PREFIX
 from core.enums import ClaimMode, TicketPriority, TicketStatus
 from core.errors import ValidationError
 from db.connection import DatabaseManager
+from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.priority_service import PRIORITY_CHANNEL_PREFIXES, PriorityService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
+from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
+
+_ACTIVE_CAPACITY_STATUSES = (TicketStatus.SUBMITTED, TicketStatus.TRANSFERRING)
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +56,8 @@ class SleepService:
         ticket_repository: TicketRepository | None = None,
         lock_manager: LockManager | None = None,
         guard_service: StaffGuardService | None = None,
+        ticket_mute_repository: TicketMuteRepository | None = None,
+        permission_service: StaffPermissionService | None = None,
         staff_panel_service: StaffPanelService | None = None,
     ) -> None:
         self.database = database
@@ -62,6 +68,8 @@ class SleepService:
             database,
             ticket_repository=self.ticket_repository,
         )
+        self.ticket_mute_repository = ticket_mute_repository or TicketMuteRepository(database)
+        self.permission_service = permission_service or StaffPermissionService()
 
     def inspect_sleep_request(
         self,
@@ -145,6 +153,12 @@ class SleepService:
                 )
                 raise
 
+            await self._sync_ticket_permissions(
+                channel=channel,
+                context=preparation.context,
+                ticket=updated_ticket,
+            )
+
             log_message = await self._send_channel_log(
                 channel,
                 content=(
@@ -187,8 +201,20 @@ class SleepService:
             return None
 
         async with self._acquire_channel_lock(channel_id):
-            ticket = self.ticket_repository.get_by_channel_id(channel_id)
-            if ticket is None or ticket.status is not TicketStatus.SLEEP:
+            context = self._load_sleep_context(channel_id)
+            if context is None:
+                return None
+            ticket = context.ticket
+
+            has_capacity, active_count = self._has_wake_capacity(ticket=ticket, max_open_tickets=context.config.max_open_tickets)
+            if not has_capacity:
+                await self._send_channel_log(
+                    channel,
+                    content=(
+                        f"⏸️ ticket `{ticket.ticket_id}` 仍保持 sleep：当前 active 容量已满"
+                        f"（{active_count}/{context.config.max_open_tickets}），请稍后再试。"
+                    ),
+                )
                 return None
 
             restored_priority = self._resolve_wake_priority(ticket)
@@ -217,6 +243,12 @@ class SleepService:
                     priority_before_sleep=ticket.priority_before_sleep,
                 )
                 raise
+
+            await self._sync_ticket_permissions(
+                channel=channel,
+                context=context,
+                ticket=updated_ticket,
+            )
 
             log_message = await self._send_channel_log(
                 channel,
@@ -293,6 +325,57 @@ class SleepService:
         if send is None:
             return None
         return await send(content=content)
+
+    def _load_sleep_context(self, channel_id: int) -> StaffTicketContext | None:
+        ticket = self.ticket_repository.get_by_channel_id(channel_id)
+        if ticket is None or ticket.status is not TicketStatus.SLEEP:
+            return None
+
+        config = self.guard_service.guild_repository.get_config(ticket.guild_id)
+        if config is None or not config.is_initialized:
+            return None
+
+        category = self.guard_service.guild_repository.get_category(ticket.guild_id, ticket.category_key)
+        if category is None:
+            return None
+
+        return StaffTicketContext(ticket=ticket, config=config, category=category)
+
+    def _has_wake_capacity(self, *, ticket: Any, max_open_tickets: int) -> tuple[bool, int]:
+        active_tickets = self.ticket_repository.list_by_guild(ticket.guild_id, statuses=_ACTIVE_CAPACITY_STATUSES)
+        active_count = sum(1 for active_ticket in active_tickets if active_ticket.ticket_id != ticket.ticket_id)
+        return active_count < max_open_tickets, active_count
+
+    async def _sync_ticket_permissions(
+        self,
+        *,
+        channel: Any,
+        context: StaffTicketContext,
+        ticket: Any,
+    ) -> None:
+        creator = self._resolve_channel_member(channel, context.ticket.creator_id)
+        muted_participants = self._resolve_muted_participants(channel, ticket.ticket_id)
+        await self.permission_service.apply_ticket_permissions(
+            channel,
+            config=context.config,
+            category=context.category,
+            creator=creator,
+            participants=muted_participants,
+            muted_participants=muted_participants,
+        )
+
+    def _resolve_muted_participants(self, channel: Any, ticket_id: str) -> list[Any]:
+        return [
+            member
+            for member in (self._resolve_channel_member(channel, record.user_id) for record in self.ticket_mute_repository.list_by_ticket(ticket_id))
+            if member is not None
+        ]
+
+    @staticmethod
+    def _resolve_channel_member(channel: Any, user_id: int) -> Any | None:
+        guild = getattr(channel, "guild", None)
+        get_member = getattr(guild, "get_member", None)
+        return get_member(user_id) if callable(get_member) else None
 
     @asynccontextmanager
     async def _acquire_channel_lock(self, channel_id: int) -> AsyncIterator[None]:

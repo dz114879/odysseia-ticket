@@ -246,6 +246,42 @@ async def test_handle_message_wakes_sleep_ticket_and_restores_previous_priority(
 
 
 @pytest.mark.asyncio
+async def test_handle_message_keeps_sleep_ticket_when_active_capacity_is_full(prepared_sleep_context) -> None:
+    database = prepared_sleep_context["database"]
+    channel = prepared_sleep_context["channel"]
+    ticket_repository = prepared_sleep_context["ticket_repository"]
+    service = SleepService(
+        database,
+        lock_manager=LockManager(),
+    )
+    ticket_repository.update(
+        prepared_sleep_context["ticket"].ticket_id,
+        status=TicketStatus.SLEEP,
+        priority=TicketPriority.SLEEP,
+        priority_before_sleep=TicketPriority.HIGH,
+    )
+    GuildRepository(database).update_config(1, max_open_tickets=1)
+    ticket_repository.create(
+        TicketRecord(
+            ticket_id="1-support-0002",
+            guild_id=1,
+            creator_id=202,
+            category_key="support",
+            channel_id=9002,
+            status=TicketStatus.SUBMITTED,
+        )
+    )
+
+    result = await service.handle_message(SimpleNamespace(author=SimpleNamespace(id=777, bot=False), guild=SimpleNamespace(id=1), channel=channel))
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+    assert result is None
+    assert stored is not None and stored.status is TicketStatus.SLEEP
+    assert channel.sent_messages
+    assert "active 容量已满（1/1）" in channel.sent_messages[0].content
+
+
+@pytest.mark.asyncio
 async def test_handle_message_returns_none_for_non_sleep_ticket(prepared_sleep_context) -> None:
     service = SleepService(prepared_sleep_context["database"], lock_manager=LockManager())
     message = SimpleNamespace(

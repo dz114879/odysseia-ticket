@@ -72,7 +72,7 @@ def build_staff_control_panel_embed(
     if transfer_summary is not None:
         embed.add_field(name="转交信息", value=transfer_summary, inline=False)
     embed.set_footer(
-        text="claim / unclaim / priority / sleep / transfer / untransfer / help 已接入；transfer 当前为延迟执行并可在窗口内撤销。"
+        text="claim / unclaim / transfer-claim / rename / mute / unmute / priority / sleep / transfer / untransfer / help 已接入；transfer 当前为延迟执行并可在窗口内撤销。"
     )
     return embed
 
@@ -101,14 +101,34 @@ def _build_staff_panel_description(
     else:
         description = f"当前 ticket 状态为 { _format_status_label(ticket.status) }。"
 
-    if config is None:
-        return description
+    if config is not None:
+        if (
+            ticket.status is TicketStatus.SUBMITTED and config.claim_mode is ClaimMode.STRICT and ticket.claimed_by is None
+        ):
+            description = f"{description}\n当前为 strict claim mode，未认领前 staff 默认仅可见不可发言。"
+        else:
+            description = f"{description}\n当前 claim mode：{_format_claim_mode_label(config.claim_mode)}。"
 
-    if (
-        ticket.status is TicketStatus.SUBMITTED and config.claim_mode is ClaimMode.STRICT and ticket.claimed_by is None
-    ):
-        return f"{description}\n当前为 strict claim mode，未认领前 staff 默认仅可见不可发言。"
-    return f"{description}\n当前 claim mode：{_format_claim_mode_label(config.claim_mode)}。"
+    action_hint = _build_staff_panel_action_hint(ticket)
+    if action_hint is None:
+        return description
+    return f"{description}\n{action_hint}"
+
+
+def _build_staff_panel_action_hint(ticket: TicketRecord) -> str | None:
+    if ticket.status is TicketStatus.SUBMITTED:
+        return "面板中的认领 / 取消认领 / 优先级控件当前可用；其他动作请继续使用 slash 命令。"
+    if ticket.status is TicketStatus.SLEEP:
+        return (
+            "当前面板已禁用认领 / 取消认领 / 优先级控件；如需继续处理，可改用 "
+            "`/ticket rename`、`/ticket mute`、`/ticket unmute`、`/ticket transfer` 或 `/ticket help`。"
+        )
+    if ticket.status is TicketStatus.TRANSFERRING:
+        return (
+            "当前面板已禁用认领 / 取消认领 / 优先级控件；如需撤销本次转交，请使用 `/ticket untransfer`，"
+            "其他说明可通过 `/ticket help` 查看。"
+        )
+    return None
 
 
 def _build_transfer_summary(ticket: TicketRecord) -> str | None:

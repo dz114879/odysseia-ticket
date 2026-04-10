@@ -18,6 +18,62 @@ class StaffPermissionUpdate:
 
 
 class StaffPermissionService:
+    async def apply_ticket_permissions(
+        self,
+        channel: Any,
+        *,
+        config: GuildConfigRecord,
+        category: TicketCategoryConfig,
+        active_claimer: Any | None = None,
+        previous_claimer_id: int | None = None,
+        hidden_categories: Iterable[TicketCategoryConfig | None] = (),
+        creator: Any | None = None,
+        participants: Iterable[Any] = (),
+        muted_participants: Iterable[Any] = (),
+        include_staff: bool = True,
+        include_participants: bool = True,
+        visible_reason: str = "Recalculate current category staff participation",
+        hidden_reason: str = "Hide stale staff access after category change",
+        previous_claimer_reason: str = "Normalize previous claimer override after claim state change",
+        active_claimer_reason: str = "Normalize current claimer override",
+        strict_claimer_reason: str = "Allow current claimer to speak in strict claim mode",
+        creator_reason: str = "Normalize ticket creator access",
+        participant_reason: str = "Normalize participant access",
+        muted_reason: str = "Preserve muted participant restriction",
+    ) -> None:
+        guild = getattr(channel, "guild", None)
+        set_permissions = getattr(channel, "set_permissions", None)
+        if guild is None or set_permissions is None:
+            return
+
+        updates = self.build_ticket_permission_plan(
+            guild,
+            config=config,
+            category=category,
+            active_claimer=active_claimer,
+            previous_claimer_id=previous_claimer_id,
+            hidden_categories=hidden_categories,
+            creator=creator,
+            participants=participants,
+            muted_participants=muted_participants,
+            include_staff=include_staff,
+            include_participants=include_participants,
+            visible_reason=visible_reason,
+            hidden_reason=hidden_reason,
+            previous_claimer_reason=previous_claimer_reason,
+            active_claimer_reason=active_claimer_reason,
+            strict_claimer_reason=strict_claimer_reason,
+            creator_reason=creator_reason,
+            participant_reason=participant_reason,
+            muted_reason=muted_reason,
+        )
+        for update in updates:
+            await set_permissions(
+                update.target,
+                overwrite=update.overwrite,
+                reason=update.reason,
+            )
+
     async def apply_staff_overwrite_plan(
         self,
         channel: Any,
@@ -57,6 +113,80 @@ class StaffPermissionService:
                 overwrite=update.overwrite,
                 reason=update.reason,
             )
+
+    async def apply_participant_overwrite(
+        self,
+        channel: Any,
+        *,
+        target: Any,
+        can_send: bool,
+        reason: str,
+    ) -> None:
+        set_permissions = getattr(channel, "set_permissions", None)
+        if set_permissions is None:
+            return
+        await set_permissions(
+            target,
+            overwrite=self.build_participant_overwrite(can_send=can_send),
+            reason=reason,
+        )
+
+    def build_ticket_permission_plan(
+        self,
+        guild: Any,
+        *,
+        config: GuildConfigRecord,
+        category: TicketCategoryConfig,
+        active_claimer: Any | None = None,
+        previous_claimer_id: int | None = None,
+        hidden_categories: Iterable[TicketCategoryConfig | None] = (),
+        creator: Any | None = None,
+        participants: Iterable[Any] = (),
+        muted_participants: Iterable[Any] = (),
+        include_staff: bool = True,
+        include_participants: bool = True,
+        visible_reason: str = "Recalculate current category staff participation",
+        hidden_reason: str = "Hide stale staff access after category change",
+        previous_claimer_reason: str = "Normalize previous claimer override after claim state change",
+        active_claimer_reason: str = "Normalize current claimer override",
+        strict_claimer_reason: str = "Allow current claimer to speak in strict claim mode",
+        creator_reason: str = "Normalize ticket creator access",
+        participant_reason: str = "Normalize participant access",
+        muted_reason: str = "Preserve muted participant restriction",
+    ) -> list[StaffPermissionUpdate]:
+        updates: list[StaffPermissionUpdate] = []
+
+        if include_staff:
+            updates.extend(
+                self.build_staff_overwrite_plan(
+                    guild,
+                    config=config,
+                    category=category,
+                    active_claimer=active_claimer,
+                    previous_claimer_id=previous_claimer_id,
+                    hidden_categories=hidden_categories,
+                    visible_reason=visible_reason,
+                    hidden_reason=hidden_reason,
+                    previous_claimer_reason=previous_claimer_reason,
+                    active_claimer_reason=active_claimer_reason,
+                    strict_claimer_reason=strict_claimer_reason,
+                )
+            )
+
+        if include_participants:
+            updates.extend(
+                self.build_participant_permission_plan(
+                    creator=creator,
+                    participants=participants,
+                    muted_participants=muted_participants,
+                    creator_reason=creator_reason,
+                    participant_reason=participant_reason,
+                    muted_reason=muted_reason,
+                )
+            )
+
+        return updates
+
 
     def build_staff_overwrite_plan(
         self,
@@ -225,6 +355,53 @@ class StaffPermissionService:
             attach_files=can_send,
             embed_links=can_send,
         )
+
+    @staticmethod
+    def build_participant_overwrite(*, can_send: bool) -> discord.PermissionOverwrite:
+        return discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=can_send,
+            read_message_history=True,
+            attach_files=can_send,
+            embed_links=can_send,
+        )
+
+    def build_participant_permission_plan(
+        self,
+        *,
+        creator: Any | None = None,
+        participants: Iterable[Any] = (),
+        muted_participants: Iterable[Any] = (),
+        creator_reason: str = "Normalize ticket creator access",
+        participant_reason: str = "Normalize participant access",
+        muted_reason: str = "Preserve muted participant restriction",
+    ) -> list[StaffPermissionUpdate]:
+        updates: list[StaffPermissionUpdate] = []
+        muted_target_ids = self._extract_target_ids(muted_participants)
+
+        creator_id = getattr(creator, "id", None)
+        if creator is not None and creator_id is not None:
+            updates.append(
+                StaffPermissionUpdate(
+                    target=creator,
+                    overwrite=self.build_participant_overwrite(can_send=creator_id not in muted_target_ids),
+                    reason=muted_reason if creator_id in muted_target_ids else creator_reason,
+                )
+            )
+
+        for participant in self._unique_targets(participants):
+            participant_id = getattr(participant, "id", None)
+            if participant_id is None or participant_id == creator_id:
+                continue
+            updates.append(
+                StaffPermissionUpdate(
+                    target=participant,
+                    overwrite=self.build_participant_overwrite(can_send=participant_id not in muted_target_ids),
+                    reason=muted_reason if participant_id in muted_target_ids else participant_reason,
+                )
+            )
+
+        return updates
 
     @staticmethod
     def _build_hidden_staff_overwrite() -> discord.PermissionOverwrite:

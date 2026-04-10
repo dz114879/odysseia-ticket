@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.enums import ClaimMode, TicketStatus
-from core.errors import InvalidTicketStateError, PermissionDeniedError
+from core.errors import InvalidTicketStateError, PermissionDeniedError, ValidationError
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
@@ -275,3 +275,89 @@ async def test_unclaim_ticket_allows_admin_force_cancel_in_strict_mode(prepared_
     assert staff_panel_service.requested_ticket_ids == [result.ticket.ticket_id]
     assert all(call["overwrite"].send_messages is False for call in channel.permission_calls)
     assert "原认领者" in channel.sent_messages[0].content
+
+
+@pytest.mark.asyncio
+async def test_transfer_claim_allows_current_claimer_to_transfer_to_another_staff(prepared_claim_context) -> None:
+    database = prepared_claim_context["database"]
+    channel = prepared_claim_context["channel"]
+    staff_member = prepared_claim_context["staff_member"]
+    explicit_staff_member = prepared_claim_context["explicit_staff_member"]
+    ticket_repository = prepared_claim_context["ticket_repository"]
+    staff_panel_service = FakeStaffPanelService()
+    service = ClaimService(database, lock_manager=LockManager(), staff_panel_service=staff_panel_service)
+
+    ticket_repository.update(prepared_claim_context["ticket"].ticket_id, claimed_by=staff_member.id)
+
+    result = await service.transfer_claim(channel, actor=staff_member, target=explicit_staff_member)
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert result.changed is True
+    assert result.forced is False
+    assert result.previous_claimer_id == staff_member.id
+    assert stored is not None
+    assert stored.claimed_by == explicit_staff_member.id
+    assert [call["target_id"] for call in channel.permission_calls] == [400, 500, 302, 301]
+    assert all(call["overwrite"].send_messages is True for call in channel.permission_calls)
+    assert channel.sent_messages
+    assert "转交给" in channel.sent_messages[0].content
+    assert f"<@{explicit_staff_member.id}>" in channel.sent_messages[0].content
+    assert staff_panel_service.requested_ticket_ids == [result.ticket.ticket_id]
+
+
+@pytest.mark.asyncio
+async def test_transfer_claim_allows_admin_force_transfer_in_strict_mode(prepared_claim_context) -> None:
+    database = prepared_claim_context["database"]
+    channel = prepared_claim_context["channel"]
+    staff_member = prepared_claim_context["staff_member"]
+    explicit_staff_member = prepared_claim_context["explicit_staff_member"]
+    admin_member = prepared_claim_context["admin_member"]
+    guild_repository = prepared_claim_context["guild_repository"]
+    ticket_repository = prepared_claim_context["ticket_repository"]
+    service = ClaimService(database, lock_manager=LockManager())
+
+    guild_repository.update_config(1, claim_mode=ClaimMode.STRICT)
+    ticket_repository.update(prepared_claim_context["ticket"].ticket_id, claimed_by=staff_member.id)
+
+    result = await service.transfer_claim(channel, actor=admin_member, target=explicit_staff_member)
+    stored = ticket_repository.get_by_channel_id(channel.id)
+
+    assert result.changed is True
+    assert result.forced is True
+    assert result.strict_mode is True
+    assert stored is not None
+    assert stored.claimed_by == explicit_staff_member.id
+    assert [call["target_id"] for call in channel.permission_calls] == [400, 500, 302, 301, 302]
+    assert [call["overwrite"].send_messages for call in channel.permission_calls] == [False, False, False, False, True]
+    assert channel.sent_messages
+    assert f"<@{admin_member.id}>" in channel.sent_messages[0].content
+
+
+@pytest.mark.asyncio
+async def test_transfer_claim_rejects_non_current_claimer_without_admin_override(prepared_claim_context) -> None:
+    database = prepared_claim_context["database"]
+    channel = prepared_claim_context["channel"]
+    staff_member = prepared_claim_context["staff_member"]
+    explicit_staff_member = prepared_claim_context["explicit_staff_member"]
+    ticket_repository = prepared_claim_context["ticket_repository"]
+    service = ClaimService(database, lock_manager=LockManager())
+
+    ticket_repository.update(prepared_claim_context["ticket"].ticket_id, claimed_by=staff_member.id)
+
+    with pytest.raises(PermissionDeniedError, match="只有当前认领者或 Ticket 管理员"):
+        await service.transfer_claim(channel, actor=explicit_staff_member, target=staff_member)
+
+
+@pytest.mark.asyncio
+async def test_transfer_claim_rejects_target_that_is_not_current_category_staff(prepared_claim_context) -> None:
+    database = prepared_claim_context["database"]
+    channel = prepared_claim_context["channel"]
+    staff_member = prepared_claim_context["staff_member"]
+    outsider = prepared_claim_context["outsider"]
+    ticket_repository = prepared_claim_context["ticket_repository"]
+    service = ClaimService(database, lock_manager=LockManager())
+
+    ticket_repository.update(prepared_claim_context["ticket"].ticket_id, claimed_by=staff_member.id)
+
+    with pytest.raises(ValidationError, match="合法 staff"):
+        await service.transfer_claim(channel, actor=staff_member, target=outsider)

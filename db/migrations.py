@@ -178,6 +178,35 @@ _MIGRATION_V5_STATEMENTS = (
 )
 
 
+_MIGRATION_V6_STATEMENTS = (
+    """
+    CREATE TABLE IF NOT EXISTS ticket_mutes (
+        ticket_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        muted_by INTEGER NOT NULL,
+        reason TEXT,
+        expire_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (ticket_id, user_id)
+    );
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_ticket_mutes_expire_at ON ticket_mutes (expire_at) WHERE expire_at IS NOT NULL;",
+)
+
+
+_MIGRATION_V7_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN close_reason TEXT;",
+    "ALTER TABLE tickets ADD COLUMN close_initiated_by INTEGER;",
+    "ALTER TABLE tickets ADD COLUMN close_execute_at TEXT;",
+    "ALTER TABLE tickets ADD COLUMN closed_at TEXT;",
+    "ALTER TABLE tickets ADD COLUMN archive_message_id INTEGER;",
+    "ALTER TABLE tickets ADD COLUMN archived_at TEXT;",
+    "ALTER TABLE tickets ADD COLUMN message_count INTEGER;",
+    "CREATE INDEX IF NOT EXISTS idx_tickets_close_execute_at ON tickets (close_execute_at) WHERE close_execute_at IS NOT NULL;",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
@@ -196,6 +225,14 @@ def _migration_v4_add_sleep_priority_tracking(connection: sqlite3.Connection) ->
 
 def _migration_v5_add_transfer_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V5_STATEMENTS)
+
+
+def _migration_v6_create_ticket_mutes_table(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V6_STATEMENTS)
+
+
+def _migration_v7_add_close_archive_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V7_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -231,6 +268,16 @@ MIGRATIONS = [
         version=5,
         name="add_transfer_tracking",
         operation=_migration_v5_add_transfer_tracking,
+    ),
+    Migration(
+        version=6,
+        name="create_ticket_mutes_table",
+        operation=_migration_v6_create_ticket_mutes_table,
+    ),
+    Migration(
+        version=7,
+        name="add_close_archive_tracking",
+        operation=_migration_v7_add_close_archive_tracking,
     ),
 ]
 

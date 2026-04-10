@@ -6,7 +6,9 @@ from core.enums import TicketPriority
 
 if TYPE_CHECKING:
     from services.claim_service import ClaimMutationResult
+    from services.moderation_service import MuteMutationResult, UnmuteMutationResult
     from services.priority_service import PriorityUpdateResult
+    from services.rename_service import TicketRenameResult
     from services.sleep_service import SleepMutationResult
     from services.transfer_service import TransferCancellationResult, TransferMutationResult
 
@@ -28,6 +30,26 @@ def build_claim_success_message(result: ClaimMutationResult) -> str:
     )
 
 
+def build_transfer_claim_success_message(result: ClaimMutationResult) -> str:
+    if not result.changed:
+        return (
+            "当前 ticket 已由目标 staff 认领，无需重复转交。\n"
+            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+            f"- 当前认领者：<@{result.ticket.claimed_by}>"
+        )
+
+    mode_text = "strict" if result.strict_mode else "relaxed"
+    transfer_text = "管理员强制转交" if result.forced else "当前认领者主动转交"
+    return (
+        "ticket 认领已转交。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 原认领者：<@{result.previous_claimer_id}>\n"
+        f"- 新认领者：<@{result.ticket.claimed_by}>\n"
+        f"- 转交方式：{transfer_text}\n"
+        f"- claim mode：`{mode_text}`"
+    )
+
+
 def build_unclaim_success_message(result: ClaimMutationResult) -> str:
     if not result.changed:
         return (
@@ -40,6 +62,56 @@ def build_unclaim_success_message(result: ClaimMutationResult) -> str:
         "ticket 已取消认领。\n"
         f"- Ticket ID：`{result.ticket.ticket_id}`\n"
         f"- 原认领者：<@{result.previous_claimer_id}> {forced_text}".rstrip()
+    )
+
+
+def build_rename_success_message(result: TicketRenameResult) -> str:
+    if not result.changed:
+        return (
+            "当前 ticket 标题未变化。\n"
+            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+            f"- 当前频道名：`{result.new_name}`"
+        )
+
+    return (
+        "ticket 标题已更新。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 旧频道名：`{result.old_name}`\n"
+        f"- 新频道名：`{result.new_name}`"
+    )
+
+
+def build_mute_success_message(result: MuteMutationResult) -> str:
+    if not result.changed:
+        return (
+            "目标成员当前已处于相同的 ticket mute 状态。\n"
+            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+            f"- 目标成员：<@{result.target_id}>\n"
+            f"- 到期时间：{result.expire_at or '手动解除'}"
+        )
+
+    message = (
+        "ticket mute 已生效。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 目标成员：<@{result.target_id}>\n"
+        f"- 到期时间：{result.expire_at or '手动解除'}"
+    )
+    if result.reason is None:
+        return message
+    return f"{message}\n- 原因：{result.reason}"
+
+
+def build_unmute_success_message(result: UnmuteMutationResult) -> str:
+    if not result.changed:
+        return (
+            "目标成员当前未处于 ticket mute 状态。\n"
+            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+            f"- 目标成员：<@{result.target_id}>"
+        )
+    return (
+        "ticket mute 已解除。\n"
+        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
+        f"- 目标成员：<@{result.target_id}>"
     )
 
 

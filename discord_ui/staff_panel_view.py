@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import discord
 
 from core.constants import CUSTOM_ID_SEPARATOR, STAFF_CUSTOM_ID_PREFIX
-from core.enums import TicketPriority
+from core.enums import TicketPriority, TicketStatus
 from core.errors import (
     InvalidTicketStateError,
     PermissionDeniedError,
@@ -29,6 +29,7 @@ CLAIM_ACTION = "claim"
 UNCLAIM_ACTION = "unclaim"
 HELP_ACTION = "help"
 PRIORITY_ACTION = "priority"
+ACTIVE_PANEL_ACTION_STATUSES = frozenset({TicketStatus.SUBMITTED})
 
 
 PRIORITY_SELECT_OPTIONS = [
@@ -44,11 +45,12 @@ def build_staff_panel_custom_id(action: str) -> str:
 
 
 class StaffClaimButton(discord.ui.Button):
-    def __init__(self) -> None:
+    def __init__(self, *, disabled: bool = False) -> None:
         super().__init__(
             label="认领",
             style=discord.ButtonStyle.primary,
             custom_id=build_staff_panel_custom_id(CLAIM_ACTION),
+            disabled=disabled,
             row=0,
         )
 
@@ -56,6 +58,7 @@ class StaffClaimButton(discord.ui.Button):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
+            await _defer_ephemeral(interaction)
             claim_service = _build_claim_service(interaction)
             result = await claim_service.claim_ticket(
                 channel,
@@ -76,11 +79,12 @@ class StaffClaimButton(discord.ui.Button):
 
 
 class StaffUnclaimButton(discord.ui.Button):
-    def __init__(self) -> None:
+    def __init__(self, *, disabled: bool = False) -> None:
         super().__init__(
             label="取消认领",
             style=discord.ButtonStyle.secondary,
             custom_id=build_staff_panel_custom_id(UNCLAIM_ACTION),
+            disabled=disabled,
             row=0,
         )
 
@@ -88,6 +92,7 @@ class StaffUnclaimButton(discord.ui.Button):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
+            await _defer_ephemeral(interaction)
             claim_service = _build_claim_service(interaction)
             result = await claim_service.unclaim_ticket(
                 channel,
@@ -128,13 +133,14 @@ class StaffHelpButton(discord.ui.Button):
 
 
 class StaffPrioritySelect(discord.ui.Select):
-    def __init__(self) -> None:
+    def __init__(self, *, disabled: bool = False, placeholder: str = "设置当前 ticket 优先级") -> None:
         super().__init__(
-            placeholder="设置当前 ticket 优先级",
+            placeholder=placeholder,
             min_values=1,
             max_values=1,
             options=PRIORITY_SELECT_OPTIONS,
             custom_id=build_staff_panel_custom_id(PRIORITY_ACTION),
+            disabled=disabled,
             row=1,
         )
 
@@ -142,6 +148,7 @@ class StaffPrioritySelect(discord.ui.Select):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
+            await _defer_ephemeral(interaction)
             priority_service = _build_priority_service(interaction)
             result = await priority_service.set_priority(
                 channel,
@@ -163,12 +170,28 @@ class StaffPrioritySelect(discord.ui.Select):
 
 
 class StaffPanelView(discord.ui.View):
-    def __init__(self) -> None:
+    def __init__(self, *, ticket_status: TicketStatus = TicketStatus.SUBMITTED) -> None:
         super().__init__(timeout=None)
-        self.add_item(StaffClaimButton())
-        self.add_item(StaffUnclaimButton())
+        actions_disabled = ticket_status not in ACTIVE_PANEL_ACTION_STATUSES
+        self.add_item(StaffClaimButton(disabled=actions_disabled))
+        self.add_item(StaffUnclaimButton(disabled=actions_disabled))
         self.add_item(StaffHelpButton())
-        self.add_item(StaffPrioritySelect())
+        self.add_item(
+            StaffPrioritySelect(
+                disabled=actions_disabled,
+                placeholder=_build_priority_placeholder(ticket_status),
+            )
+        )
+
+
+def _build_priority_placeholder(ticket_status: TicketStatus) -> str:
+    if ticket_status in ACTIVE_PANEL_ACTION_STATUSES:
+        return "设置当前 ticket 优先级"
+    if ticket_status is TicketStatus.SLEEP:
+        return "sleep 状态下暂不可修改优先级"
+    if ticket_status is TicketStatus.TRANSFERRING:
+        return "transferring 状态下暂不可修改优先级"
+    return f"{ticket_status.value} 状态下暂不可修改优先级"
 
 
 def _build_claim_service(interaction: discord.Interaction) -> ClaimService:
@@ -254,3 +277,9 @@ async def _send_ephemeral(interaction: discord.Interaction, content: str) -> Non
         await interaction.followup.send(content, ephemeral=True)
         return
     await interaction.response.send_message(content, ephemeral=True)
+
+
+async def _defer_ephemeral(interaction: discord.Interaction) -> None:
+    if interaction.response.is_done():
+        return
+    await interaction.response.defer(ephemeral=True, thinking=True)

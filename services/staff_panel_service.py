@@ -89,7 +89,7 @@ class StaffPanelService:
 
         await message.edit(
             embed=build_staff_control_panel_embed(ticket, category=category, config=config),
-            view=self._build_panel_view(),
+            view=self._build_panel_view(ticket),
         )
         return StaffPanelRefreshResult(
             ticket=ticket,
@@ -134,7 +134,7 @@ class StaffPanelService:
 
         message = await send(
             embed=build_staff_control_panel_embed(ticket, category=category, config=config),
-            view=self._build_panel_view(),
+            view=self._build_panel_view(ticket),
         )
         updated_ticket = self.ticket_repository.update(
             ticket.ticket_id,
@@ -156,7 +156,7 @@ class StaffPanelService:
             raise ValidationError("无法定位当前 ticket 所在频道。") from exc
 
     @staticmethod
-    def _build_panel_view():
+    def _build_panel_view(ticket: TicketRecord):
         from discord_ui.staff_panel_view import StaffPanelView
 
-        return StaffPanelView()
+        return StaffPanelView(ticket_status=ticket.status)

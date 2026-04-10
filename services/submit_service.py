@@ -160,8 +160,9 @@ class SubmitService:
         config: GuildConfigRecord,
         category: TicketCategoryConfig,
     ) -> None:
-        await self.permission_service.apply_staff_overwrite_plan(
+        await self.permission_service.apply_ticket_permissions(
             channel,
+            include_participants=False,
             config=config,
             category=category,
             visible_reason=f"Open submitted ticket {getattr(channel, 'id', 'unknown')} to staff",

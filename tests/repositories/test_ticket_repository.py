@@ -34,6 +34,13 @@ def make_ticket(
     transfer_execute_at: str | None = None,
     transfer_history_json: str = "[]",
     staff_panel_message_id: int | None = None,
+    close_reason: str | None = None,
+    close_initiated_by: int | None = None,
+    close_execute_at: str | None = None,
+    closed_at: str | None = None,
+    archive_message_id: int | None = None,
+    archived_at: str | None = None,
+    message_count: int | None = None,
 ) -> TicketRecord:
     return TicketRecord(
         ticket_id=ticket_id,
@@ -56,6 +63,13 @@ def make_ticket(
         transfer_execute_at=transfer_execute_at,
         transfer_history_json=transfer_history_json,
         staff_panel_message_id=staff_panel_message_id,
+        close_reason=close_reason,
+        close_initiated_by=close_initiated_by,
+        close_execute_at=close_execute_at,
+        closed_at=closed_at,
+        archive_message_id=archive_message_id,
+        archived_at=archived_at,
+        message_count=message_count,
     )
 
 
@@ -77,6 +91,13 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             transfer_reason="需要账单组处理",
             transfer_execute_at="2024-01-01T02:00:00+00:00",
             transfer_history_json='[{"target":"billing"}]',
+            close_reason="问题已解决",
+            close_initiated_by=401,
+            close_execute_at="2024-01-01T03:00:00+00:00",
+            closed_at="2024-01-01T03:00:00+00:00",
+            archive_message_id=7777,
+            archived_at="2024-01-01T03:02:00+00:00",
+            message_count=42,
         )
     )
 
@@ -97,6 +118,13 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.has_user_message is True
     assert loaded.last_user_message_at == "2024-01-01T01:00:00+00:00"
     assert loaded.staff_panel_message_id == 3333
+    assert loaded.close_reason == "问题已解决"
+    assert loaded.close_initiated_by == 401
+    assert loaded.close_execute_at == "2024-01-01T03:00:00+00:00"
+    assert loaded.closed_at == "2024-01-01T03:00:00+00:00"
+    assert loaded.archive_message_id == 7777
+    assert loaded.archived_at == "2024-01-01T03:02:00+00:00"
+    assert loaded.message_count == 42
     assert repository.get_by_channel_id(501) == loaded
 
 
@@ -169,6 +197,34 @@ def test_list_due_transfer_executions_returns_only_due_transferring_tickets(
     assert [ticket.ticket_id for ticket in repository.list_due_transfer_executions("2024-01-01T02:00:00+00:00")] == ["ticket-due"]
 
 
+def test_list_due_close_executions_returns_only_due_closing_tickets(
+    repository: TicketRepository,
+) -> None:
+    repository.create(
+        make_ticket(
+            "ticket-due-close",
+            status=TicketStatus.CLOSING,
+            close_execute_at="2024-01-01T01:00:00+00:00",
+        )
+    )
+    repository.create(
+        make_ticket(
+            "ticket-future-close",
+            status=TicketStatus.CLOSING,
+            close_execute_at="2024-01-01T03:00:00+00:00",
+        )
+    )
+    repository.create(
+        make_ticket(
+            "ticket-archiving",
+            status=TicketStatus.ARCHIVING,
+            close_execute_at="2024-01-01T00:30:00+00:00",
+        )
+    )
+
+    assert [ticket.ticket_id for ticket in repository.list_due_close_executions("2024-01-01T02:00:00+00:00")] == ["ticket-due-close"]
+
+
 def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     repository: TicketRepository,
 ) -> None:
@@ -199,6 +255,13 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
             transfer_reason="sleep 状态下转交",
             transfer_execute_at="2024-02-01T02:00:00+00:00",
             transfer_history_json='[{"target":"billing","status_before":"sleep"}]',
+            close_reason="已确认完结",
+            close_initiated_by=401,
+            close_execute_at="2024-02-01T03:00:00+00:00",
+            closed_at="2024-02-01T03:00:00+00:00",
+            archive_message_id=9001,
+            archived_at="2024-02-01T03:02:00+00:00",
+            message_count=11,
         )
     )
 
@@ -216,6 +279,13 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         transfer_reason=None,
         transfer_execute_at=None,
         transfer_history_json="[]",
+        close_reason=None,
+        close_initiated_by=None,
+        close_execute_at=None,
+        closed_at=None,
+        archive_message_id=None,
+        archived_at=None,
+        message_count=None,
     )
 
     assert upserted.created_at == "2024-01-01T00:00:00+00:00"
@@ -232,6 +302,13 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert upserted.transfer_reason == "sleep 状态下转交"
     assert upserted.transfer_execute_at == "2024-02-01T02:00:00+00:00"
     assert upserted.transfer_history_json == '[{"target":"billing","status_before":"sleep"}]'
+    assert upserted.close_reason == "已确认完结"
+    assert upserted.close_initiated_by == 401
+    assert upserted.close_execute_at == "2024-02-01T03:00:00+00:00"
+    assert upserted.closed_at == "2024-02-01T03:00:00+00:00"
+    assert upserted.archive_message_id == 9001
+    assert upserted.archived_at == "2024-02-01T03:02:00+00:00"
+    assert upserted.message_count == 11
 
     assert updated is not None
     assert updated.created_at == "2024-01-01T00:00:00+00:00"
@@ -248,6 +325,13 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.transfer_reason is None
     assert updated.transfer_execute_at is None
     assert updated.transfer_history_json == "[]"
+    assert updated.close_reason is None
+    assert updated.close_initiated_by is None
+    assert updated.close_execute_at is None
+    assert updated.closed_at is None
+    assert updated.archive_message_id is None
+    assert updated.archived_at is None
+    assert updated.message_count is None
     assert updated.updated_at == "2024-03-01T00:00:00+00:00"
 
     assert repository.delete("ticket-100") is True

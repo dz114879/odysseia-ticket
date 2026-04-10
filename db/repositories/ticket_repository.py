@@ -42,6 +42,13 @@ class TicketRepository(BaseRepository):
             transfer_execute_at=row["transfer_execute_at"],
             transfer_history_json=row["transfer_history_json"],
             staff_panel_message_id=row["staff_panel_message_id"],
+            close_reason=row["close_reason"],
+            close_initiated_by=row["close_initiated_by"],
+            close_execute_at=row["close_execute_at"],
+            closed_at=row["closed_at"],
+            archive_message_id=row["archive_message_id"],
+            archived_at=row["archived_at"],
+            message_count=row["message_count"],
         )
 
     def create(
@@ -76,9 +83,16 @@ class TicketRepository(BaseRepository):
                     transfer_reason,
                     transfer_execute_at,
                     transfer_history_json,
-                    staff_panel_message_id
+                    staff_panel_message_id,
+                    close_reason,
+                    close_initiated_by,
+                    close_execute_at,
+                    closed_at,
+                    archive_message_id,
+                    archived_at,
+                    message_count
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -101,6 +115,13 @@ class TicketRepository(BaseRepository):
                     record.transfer_execute_at,
                     record.transfer_history_json,
                     record.staff_panel_message_id,
+                    record.close_reason,
+                    record.close_initiated_by,
+                    record.close_execute_at,
+                    record.closed_at,
+                    record.archive_message_id,
+                    record.archived_at,
+                    record.message_count,
                 ),
             )
         return TicketRecord(
@@ -124,6 +145,13 @@ class TicketRepository(BaseRepository):
             transfer_execute_at=record.transfer_execute_at,
             transfer_history_json=record.transfer_history_json,
             staff_panel_message_id=record.staff_panel_message_id,
+            close_reason=record.close_reason,
+            close_initiated_by=record.close_initiated_by,
+            close_execute_at=record.close_execute_at,
+            closed_at=record.closed_at,
+            archive_message_id=record.archive_message_id,
+            archived_at=record.archived_at,
+            message_count=record.message_count,
         )
 
     def upsert(
@@ -158,9 +186,16 @@ class TicketRepository(BaseRepository):
                     transfer_reason,
                     transfer_execute_at,
                     transfer_history_json,
-                    staff_panel_message_id
+                    staff_panel_message_id,
+                    close_reason,
+                    close_initiated_by,
+                    close_execute_at,
+                    closed_at,
+                    archive_message_id,
+                    archived_at,
+                    message_count
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -179,7 +214,14 @@ class TicketRepository(BaseRepository):
                     transfer_reason = excluded.transfer_reason,
                     transfer_execute_at = excluded.transfer_execute_at,
                     transfer_history_json = excluded.transfer_history_json,
-                    staff_panel_message_id = excluded.staff_panel_message_id;
+                    staff_panel_message_id = excluded.staff_panel_message_id,
+                    close_reason = excluded.close_reason,
+                    close_initiated_by = excluded.close_initiated_by,
+                    close_execute_at = excluded.close_execute_at,
+                    closed_at = excluded.closed_at,
+                    archive_message_id = excluded.archive_message_id,
+                    archived_at = excluded.archived_at,
+                    message_count = excluded.message_count;
                 """,
                 (
                     record.ticket_id,
@@ -202,6 +244,13 @@ class TicketRepository(BaseRepository):
                     record.transfer_execute_at,
                     record.transfer_history_json,
                     record.staff_panel_message_id,
+                    record.close_reason,
+                    record.close_initiated_by,
+                    record.close_execute_at,
+                    record.closed_at,
+                    record.archive_message_id,
+                    record.archived_at,
+                    record.message_count,
                 ),
             )
         return self.get_by_ticket_id(record.ticket_id, connection=connection) or TicketRecord(
@@ -225,6 +274,13 @@ class TicketRepository(BaseRepository):
             transfer_execute_at=record.transfer_execute_at,
             transfer_history_json=record.transfer_history_json,
             staff_panel_message_id=record.staff_panel_message_id,
+            close_reason=record.close_reason,
+            close_initiated_by=record.close_initiated_by,
+            close_execute_at=record.close_execute_at,
+            closed_at=record.closed_at,
+            archive_message_id=record.archive_message_id,
+            archived_at=record.archived_at,
+            message_count=record.message_count,
         )
 
     def get_by_ticket_id(
@@ -322,6 +378,25 @@ class TicketRepository(BaseRepository):
             rows = current_connection.execute(query, parameters).fetchall()
         return [self._row_to_record(row) for row in rows]
 
+    def list_due_close_executions(
+        self,
+        execute_before: str,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[TicketRecord]:
+        query = (
+            "SELECT * FROM tickets "
+            "WHERE status = ? "
+            "AND close_execute_at IS NOT NULL "
+            "AND close_execute_at <= ? "
+            "ORDER BY close_execute_at ASC, created_at ASC;"
+        )
+        parameters = [TicketStatus.CLOSING.value, execute_before]
+
+        with self.read_connection(connection) as current_connection:
+            rows = current_connection.execute(query, parameters).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
     def update(
         self,
         ticket_id: str,
@@ -345,6 +420,13 @@ class TicketRepository(BaseRepository):
         transfer_execute_at: str | None | object = UNSET,
         transfer_history_json: str | object = UNSET,
         staff_panel_message_id: int | None | object = UNSET,
+        close_reason: str | None | object = UNSET,
+        close_initiated_by: int | None | object = UNSET,
+        close_execute_at: str | None | object = UNSET,
+        closed_at: str | None | object = UNSET,
+        archive_message_id: int | None | object = UNSET,
+        archived_at: str | None | object = UNSET,
+        message_count: int | None | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> TicketRecord | None:
         updates: dict[str, object] = {}
@@ -387,6 +469,20 @@ class TicketRepository(BaseRepository):
             updates["transfer_history_json"] = transfer_history_json
         if staff_panel_message_id is not UNSET:
             updates["staff_panel_message_id"] = staff_panel_message_id
+        if close_reason is not UNSET:
+            updates["close_reason"] = close_reason
+        if close_initiated_by is not UNSET:
+            updates["close_initiated_by"] = close_initiated_by
+        if close_execute_at is not UNSET:
+            updates["close_execute_at"] = close_execute_at
+        if closed_at is not UNSET:
+            updates["closed_at"] = closed_at
+        if archive_message_id is not UNSET:
+            updates["archive_message_id"] = archive_message_id
+        if archived_at is not UNSET:
+            updates["archived_at"] = archived_at
+        if message_count is not UNSET:
+            updates["message_count"] = message_count
 
         if updated_at is not UNSET:
             updates["updated_at"] = updated_at
