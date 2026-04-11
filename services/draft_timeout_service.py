@@ -109,10 +109,13 @@ class DraftTimeoutService:
             if reason is None:
                 return None
 
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.ABANDONED,
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.ABANDONED,
+                )
+                or ticket
+            )
             channel = await self._resolve_channel(updated_ticket.channel_id)
             if channel is None:
                 return DraftTimeoutOutcome(
@@ -145,9 +148,7 @@ class DraftTimeoutService:
                 return "draft_expired"
             return None
 
-        last_user_message_at = DraftTimeoutService._parse_iso_datetime(
-            ticket.last_user_message_at or ticket.created_at
-        )
+        last_user_message_at = DraftTimeoutService._parse_iso_datetime(ticket.last_user_message_at or ticket.created_at)
         if reference_time - last_user_message_at >= timedelta(hours=DRAFT_INACTIVE_CLOSE_HOURS):
             return "inactive_close"
         return None

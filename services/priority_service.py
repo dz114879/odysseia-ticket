@@ -93,10 +93,13 @@ class PriorityService:
 
             updated_ticket = context.ticket
             if priority_changed:
-                updated_ticket = self.ticket_repository.update(
-                    context.ticket.ticket_id,
-                    priority=target_priority,
-                ) or context.ticket
+                updated_ticket = (
+                    self.ticket_repository.update(
+                        context.ticket.ticket_id,
+                        priority=target_priority,
+                    )
+                    or context.ticket
+                )
 
             try:
                 if channel_name_changed:
@@ -118,10 +121,7 @@ class PriorityService:
                 priority_label = self.get_priority_label(target_priority)
                 log_message = await self._send_channel_log(
                     channel,
-                    content=(
-                        f"🏷️ <@{actor_id}> 已将 ticket `{context.ticket.ticket_id}` 的优先级调整为 "
-                        f"{priority_label}。"
-                    ),
+                    content=(f"🏷️ <@{actor_id}> 已将 ticket `{context.ticket.ticket_id}` 的优先级调整为 {priority_label}。"),
                 )
                 if self.staff_panel_service is not None:
                     self.staff_panel_service.request_refresh(context.ticket.ticket_id)

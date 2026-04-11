@@ -12,9 +12,7 @@ def repository(migrated_database) -> CounterRepository:
 
 
 def test_upsert_get_and_delete_counter(repository: CounterRepository) -> None:
-    stored = repository.upsert_counter(
-        TicketCounterRecord(guild_id=1, category_key="support", next_number=8)
-    )
+    stored = repository.upsert_counter(TicketCounterRecord(guild_id=1, category_key="support", next_number=8))
 
     loaded = repository.get_counter(1, "support")
 

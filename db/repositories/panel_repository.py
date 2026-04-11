@@ -244,11 +244,7 @@ class PanelRepository(BaseRepository):
             clauses.append("panel_id != ?")
             parameters.append(except_panel_id)
 
-        query = (
-            "UPDATE panels "
-            "SET is_active = 0, updated_at = ? "
-            f"WHERE {' AND '.join(clauses)};"
-        )
+        query = f"UPDATE panels SET is_active = 0, updated_at = ? WHERE {' AND '.join(clauses)};"
         parameters.insert(0, utc_now_iso())
 
         with self.write_connection(connection) as current_connection:

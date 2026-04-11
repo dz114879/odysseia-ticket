@@ -136,26 +136,13 @@ class DraftCog(commands.Cog):
     @staticmethod
     def _build_rename_success_message(result: DraftRenameResult) -> str:
         if not result.changed:
-            return (
-                "draft 标题未变化。\n"
-                f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-                f"- 当前频道名：`{result.new_name}`"
-            )
-        return (
-            "draft 标题已更新。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 旧频道名：`{result.old_name}`\n"
-            f"- 新频道名：`{result.new_name}`"
-        )
+            return f"draft 标题未变化。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 当前频道名：`{result.new_name}`"
+        return f"draft 标题已更新。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 旧频道名：`{result.old_name}`\n- 新频道名：`{result.new_name}`"
 
     @staticmethod
     def _build_abandon_success_message(result: DraftAbandonResult) -> str:
         deleted_text = "频道已删除。" if result.channel_deleted else "频道删除失败，请手动处理。"
-        return (
-            "draft ticket 已废弃。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 结果：{deleted_text}"
-        )
+        return f"draft ticket 已废弃。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 结果：{deleted_text}"
 
     @staticmethod
     async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:

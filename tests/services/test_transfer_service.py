@@ -411,7 +411,6 @@ async def test_transfer_ticket_rejects_unknown_target_category(prepared_transfer
         )
 
 
-
 @pytest.mark.asyncio
 async def test_cancel_transfer_restores_submitted_and_clears_transfer_fields(prepared_transfer_context) -> None:
     database = prepared_transfer_context["database"]

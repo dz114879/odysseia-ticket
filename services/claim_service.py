@@ -89,14 +89,15 @@ class ClaimService:
                 )
 
             if context.ticket.claimed_by is not None:
-                raise ValidationError(
-                    f"该 ticket 已被 <@{context.ticket.claimed_by}> 认领；如需转交，请使用 `/ticket transfer-claim`。"
-                )
+                raise ValidationError(f"该 ticket 已被 <@{context.ticket.claimed_by}> 认领；如需转交，请使用 `/ticket transfer-claim`。")
 
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                claimed_by=actor_id,
-            ) or context.ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    claimed_by=actor_id,
+                )
+                or context.ticket
+            )
             await self._sync_staff_permissions(
                 channel=channel,
                 config=context.config,
@@ -171,10 +172,13 @@ class ClaimService:
                 )
 
             previous_claimer_id = context.ticket.claimed_by
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                claimed_by=target_id,
-            ) or context.ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    claimed_by=target_id,
+                )
+                or context.ticket
+            )
             await self._sync_staff_permissions(
                 channel=channel,
                 config=context.config,
@@ -184,15 +188,9 @@ class ClaimService:
             )
 
             if forced:
-                content = (
-                    f"🔁 <@{actor_id}> 已将 ticket `{updated_ticket.ticket_id}` 的认领从 "
-                    f"<@{previous_claimer_id}> 转交给 <@{target_id}>。"
-                )
+                content = f"🔁 <@{actor_id}> 已将 ticket `{updated_ticket.ticket_id}` 的认领从 <@{previous_claimer_id}> 转交给 <@{target_id}>。"
             else:
-                content = (
-                    f"🔁 <@{actor_id}> 已将 ticket `{updated_ticket.ticket_id}` 的认领转交给 "
-                    f"<@{target_id}>。"
-                )
+                content = f"🔁 <@{actor_id}> 已将 ticket `{updated_ticket.ticket_id}` 的认领转交给 <@{target_id}>。"
             log_message = await self._send_channel_log(channel, content=content)
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(updated_ticket.ticket_id)
@@ -246,10 +244,13 @@ class ClaimService:
             ):
                 raise PermissionDeniedError("只有当前认领者或 Ticket 管理员可以取消认领。")
 
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                claimed_by=None,
-            ) or context.ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    claimed_by=None,
+                )
+                or context.ticket
+            )
             await self._sync_staff_permissions(
                 channel=channel,
                 config=context.config,
@@ -259,10 +260,7 @@ class ClaimService:
             )
 
             if forced:
-                content = (
-                    f"👐 <@{actor_id}> 已取消 ticket `{updated_ticket.ticket_id}` 的认领。\n"
-                    f"- 原认领者：<@{context.ticket.claimed_by}>"
-                )
+                content = f"👐 <@{actor_id}> 已取消 ticket `{updated_ticket.ticket_id}` 的认领。\n- 原认领者：<@{context.ticket.claimed_by}>"
             else:
                 content = f"👐 <@{actor_id}> 已放弃认领 ticket `{updated_ticket.ticket_id}`。"
             log_message = await self._send_channel_log(channel, content=content)

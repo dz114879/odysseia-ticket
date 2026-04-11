@@ -622,7 +622,6 @@ async def test_show_ticket_help_is_available_in_draft_ticket(prepared_staff_cog_
     assert "/ticket submit" in interaction.response.messages[0]["content"]
 
 
-
 @pytest.mark.asyncio
 async def test_staff_cog_registers_persistent_staff_panel_view(prepared_staff_cog_context) -> None:
     bot = prepared_staff_cog_context["bot"]
@@ -645,9 +644,7 @@ async def test_staff_panel_claim_button_updates_ticket_and_returns_feedback(
     panel_message = prepared_staff_cog_context["panel_message"]
     ticket_repository = prepared_staff_cog_context["ticket_repository"]
     view = StaffPanelView()
-    claim_button = next(
-        child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("claim")
-    )
+    claim_button = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("claim"))
     interaction = FakeInteraction(guild, channel, staff_user, bot=bot, message=panel_message)
 
     await claim_button.callback(interaction)
@@ -667,9 +664,7 @@ async def test_staff_panel_help_button_returns_shared_help_text(prepared_staff_c
     creator = prepared_staff_cog_context["creator"]
     panel_message = prepared_staff_cog_context["panel_message"]
     view = StaffPanelView()
-    help_button = next(
-        child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("help")
-    )
+    help_button = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("help"))
     interaction = FakeInteraction(guild, channel, creator, bot=bot, message=panel_message)
 
     await help_button.callback(interaction)
@@ -690,9 +685,7 @@ async def test_staff_panel_priority_select_updates_ticket_and_returns_feedback(
     panel_message = prepared_staff_cog_context["panel_message"]
     ticket_repository = prepared_staff_cog_context["ticket_repository"]
     view = StaffPanelView()
-    priority_select = next(
-        child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("priority")
-    )
+    priority_select = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("priority"))
     priority_select._values = [TicketPriority.HIGH.value]
     interaction = FakeInteraction(guild, channel, staff_user, bot=bot, message=panel_message)
 
@@ -714,9 +707,7 @@ async def test_staff_panel_claim_button_rejects_stale_panel_message(prepared_sta
     channel = prepared_staff_cog_context["channel"]
     staff_user = prepared_staff_cog_context["staff_user"]
     view = StaffPanelView()
-    claim_button = next(
-        child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("claim")
-    )
+    claim_button = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("claim"))
     stale_message = SimpleNamespace(id=4999)
     interaction = FakeInteraction(guild, channel, staff_user, bot=bot, message=stale_message)
 

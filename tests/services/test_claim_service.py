@@ -84,6 +84,7 @@ class FakeStaffPanelService:
     def request_refresh(self, ticket_id: str) -> None:
         self.requested_ticket_ids.append(ticket_id)
 
+
 @pytest.fixture
 def prepared_claim_context(migrated_database):
     guild_repository = GuildRepository(migrated_database)

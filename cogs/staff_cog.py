@@ -16,11 +16,14 @@ from core.errors import (
 )
 from discord_ui.help_text import build_ticket_help_message
 from discord_ui.staff_feedback import (
-    build_claim_success_message, build_mute_success_message, build_priority_success_message,
+    build_claim_success_message,
+    build_mute_success_message,
+    build_priority_success_message,
     build_sleep_success_message,
     build_rename_success_message,
     build_transfer_claim_success_message,
-    build_transfer_success_message, build_untransfer_success_message,
+    build_transfer_success_message,
+    build_untransfer_success_message,
     build_unmute_success_message,
     build_unclaim_success_message,
 )

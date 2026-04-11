@@ -71,11 +71,7 @@ class QueueService:
         queued_at: str | None = None,
         connection: sqlite3.Connection | None = None,
     ) -> QueueTicketResult:
-        connection_context = (
-            nullcontext(connection)
-            if connection is not None
-            else self.database.session()
-        )
+        connection_context = nullcontext(connection) if connection is not None else self.database.session()
         with connection_context as current_connection:
             ticket = self.ticket_repository.get_by_ticket_id(
                 ticket_id,
@@ -92,12 +88,15 @@ class QueueService:
                 return QueueTicketResult(ticket=ticket, position=position or 1)
 
             queued_timestamp = queued_at or utc_now_iso()
-            queued_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.QUEUED,
-                queued_at=queued_timestamp,
-                connection=current_connection,
-            ) or ticket
+            queued_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.QUEUED,
+                    queued_at=queued_timestamp,
+                    connection=current_connection,
+                )
+                or ticket
+            )
             position = self.get_queue_position(
                 queued_ticket.ticket_id,
                 connection=current_connection,
@@ -247,7 +246,6 @@ class QueueService:
             return None
         return QueueProcessResult(ticket=ticket, action="abandoned", position=position)
 
-
     def _build_submit_service(self):
         from services.submit_service import SubmitService
 
@@ -351,8 +349,11 @@ class QueueService:
 
     def _mark_abandoned(self, ticket: TicketRecord, *, reason: str) -> TicketRecord:
         self.logger.warning("Queued ticket abandoned. ticket_id=%s reason=%s", ticket.ticket_id, reason)
-        return self.ticket_repository.update(
-            ticket.ticket_id,
-            status=TicketStatus.ABANDONED,
-            queued_at=None,
-        ) or ticket
+        return (
+            self.ticket_repository.update(
+                ticket.ticket_id,
+                status=TicketStatus.ABANDONED,
+                queued_at=None,
+            )
+            or ticket
+        )

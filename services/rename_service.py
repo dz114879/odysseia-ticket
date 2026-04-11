@@ -91,17 +91,16 @@ class RenameService:
                 name=new_name,
                 reason=f"Rename ticket {context.ticket.ticket_id} in {context.ticket.status.value} state",
             )
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                updated_at=utc_now_iso(),
-            ) or context.ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    updated_at=utc_now_iso(),
+                )
+                or context.ticket
+            )
             log_message = await self._send_channel_log(
                 channel,
-                content=(
-                    f"✏️ <@{actor_id}> 已修改 ticket `{context.ticket.ticket_id}` 的标题。\n"
-                    f"- 旧频道名：`{old_name}`\n"
-                    f"- 新频道名：`{new_name}`"
-                ),
+                content=(f"✏️ <@{actor_id}> 已修改 ticket `{context.ticket.ticket_id}` 的标题。\n- 旧频道名：`{old_name}`\n- 新频道名：`{new_name}`"),
             )
             return TicketRenameResult(
                 ticket=updated_ticket,

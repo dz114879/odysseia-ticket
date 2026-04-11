@@ -118,11 +118,14 @@ class FakeSnapshotService:
 
     async def bootstrap_from_channel_history(self, ticket: TicketRecord, channel: FakeChannel) -> SnapshotBootstrapResult:
         self.calls.append({"ticket": ticket, "channel": channel})
-        bootstrapped_ticket = TicketRepository(self.database).update(
-            ticket.ticket_id,
-            snapshot_bootstrapped_at="2024-01-01T01:10:00+00:00",
-            message_count=1,
-        ) or ticket
+        bootstrapped_ticket = (
+            TicketRepository(self.database).update(
+                ticket.ticket_id,
+                snapshot_bootstrapped_at="2024-01-01T01:10:00+00:00",
+                message_count=1,
+            )
+            or ticket
+        )
         return SnapshotBootstrapResult(ticket=bootstrapped_ticket, create_count=1, skipped=False)
 
 

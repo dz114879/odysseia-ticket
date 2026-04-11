@@ -109,9 +109,7 @@ def test_apply_migrations_rolls_back_partial_changes_on_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def partially_failing_operation(connection: sqlite3.Connection) -> None:
-        connection.execute(
-            "CREATE TABLE rollback_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL);"
-        )
+        connection.execute("CREATE TABLE rollback_probe (id INTEGER PRIMARY KEY, value TEXT NOT NULL);")
         raise sqlite3.OperationalError("boom after partial change")
 
     monkeypatch.setattr(

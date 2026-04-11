@@ -31,9 +31,7 @@ class CooldownManager:
 
     def sweep(self) -> int:
         now = monotonic()
-        expired_keys = [
-            key for key, expires_at in self._cooldowns.items() if expires_at <= now
-        ]
+        expired_keys = [key for key, expires_at in self._cooldowns.items() if expires_at <= now]
         for key in expired_keys:
             self._cooldowns.pop(key, None)
         return len(expired_keys)

@@ -32,19 +32,13 @@ def _ensure_schema_version_table(connection: sqlite3.Connection) -> None:
         );
         """
     )
-    existing = connection.execute(
-        f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1;"
-    ).fetchone()
+    existing = connection.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1;").fetchone()
     if existing is None:
-        connection.execute(
-            f"INSERT INTO {SCHEMA_VERSION_TABLE} (id, version) VALUES (1, 0);"
-        )
+        connection.execute(f"INSERT INTO {SCHEMA_VERSION_TABLE} (id, version) VALUES (1, 0);")
 
 
 def _get_current_version(connection: sqlite3.Connection) -> int:
-    row = connection.execute(
-        f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1;"
-    ).fetchone()
+    row = connection.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1;").fetchone()
     return int(row[0]) if row is not None else 0
 
 
@@ -153,19 +147,13 @@ _MIGRATION_V1_STATEMENTS = (
 )
 
 
-_MIGRATION_V2_STATEMENTS = (
-    "ALTER TABLE tickets ADD COLUMN last_user_message_at TEXT;",
-)
+_MIGRATION_V2_STATEMENTS = ("ALTER TABLE tickets ADD COLUMN last_user_message_at TEXT;",)
 
 
-_MIGRATION_V3_STATEMENTS = (
-    "ALTER TABLE tickets ADD COLUMN staff_panel_message_id INTEGER;",
-)
+_MIGRATION_V3_STATEMENTS = ("ALTER TABLE tickets ADD COLUMN staff_panel_message_id INTEGER;",)
 
 
-_MIGRATION_V4_STATEMENTS = (
-    "ALTER TABLE tickets ADD COLUMN priority_before_sleep TEXT;",
-)
+_MIGRATION_V4_STATEMENTS = ("ALTER TABLE tickets ADD COLUMN priority_before_sleep TEXT;",)
 
 
 _MIGRATION_V5_STATEMENTS = (
@@ -207,9 +195,7 @@ _MIGRATION_V7_STATEMENTS = (
 )
 
 
-_MIGRATION_V8_STATEMENTS = (
-    "ALTER TABLE tickets ADD COLUMN snapshot_bootstrapped_at TEXT;",
-)
+_MIGRATION_V8_STATEMENTS = ("ALTER TABLE tickets ADD COLUMN snapshot_bootstrapped_at TEXT;",)
 
 
 _MIGRATION_V9_STATEMENTS = (
@@ -271,9 +257,7 @@ def _migration_v10_add_archive_failure_tracking(connection: sqlite3.Connection) 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
     latest_declared_version = ordered_migrations[-1].version if ordered_migrations else 0
     if latest_declared_version != CURRENT_SCHEMA_VERSION:
-        raise DatabaseMigrationError(
-            "迁移定义与 CURRENT_SCHEMA_VERSION 不一致。"
-        )
+        raise DatabaseMigrationError("迁移定义与 CURRENT_SCHEMA_VERSION 不一致。")
 
 
 MIGRATIONS = [

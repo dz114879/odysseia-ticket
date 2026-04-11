@@ -28,9 +28,7 @@ class TicketBot(commands.Bot):
         self.resources: BootstrapResources | None = None
 
     @staticmethod
-    def _build_bot_kwargs(
-        *, settings: EnvSettings, intents: discord.Intents
-    ) -> dict[str, Any]:
+    def _build_bot_kwargs(*, settings: EnvSettings, intents: discord.Intents) -> dict[str, Any]:
         bot_kwargs: dict[str, Any] = {
             "command_prefix": settings.bot_prefix,
             "intents": intents,
@@ -116,11 +114,7 @@ class TicketBot(commands.Bot):
 
     async def _load_extensions(self) -> None:
         cogs_dir = BASE_DIR / "cogs"
-        extension_names = sorted(
-            f"cogs.{path.stem}"
-            for path in cogs_dir.glob("*_cog.py")
-            if path.is_file()
-        )
+        extension_names = sorted(f"cogs.{path.stem}" for path in cogs_dir.glob("*_cog.py") if path.is_file())
 
         if self.resources is not None:
             self.resources.logging_service.log_local_info(

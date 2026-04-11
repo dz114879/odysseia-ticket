@@ -15,27 +15,16 @@ if TYPE_CHECKING:
 
 def build_claim_success_message(result: ClaimMutationResult) -> str:
     if not result.changed:
-        return (
-            "当前 ticket 已由您认领，无需重复操作。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 当前认领者：<@{result.ticket.claimed_by}>"
-        )
+        return f"当前 ticket 已由您认领，无需重复操作。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 当前认领者：<@{result.ticket.claimed_by}>"
 
     mode_text = "strict" if result.strict_mode else "relaxed"
-    return (
-        "ticket 已认领。\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-        f"- 当前认领者：<@{result.ticket.claimed_by}>\n"
-        f"- claim mode：`{mode_text}`"
-    )
+    return f"ticket 已认领。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 当前认领者：<@{result.ticket.claimed_by}>\n- claim mode：`{mode_text}`"
 
 
 def build_transfer_claim_success_message(result: ClaimMutationResult) -> str:
     if not result.changed:
         return (
-            "当前 ticket 已由目标 staff 认领，无需重复转交。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 当前认领者：<@{result.ticket.claimed_by}>"
+            f"当前 ticket 已由目标 staff 认领，无需重复转交。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 当前认领者：<@{result.ticket.claimed_by}>"
         )
 
     mode_text = "strict" if result.strict_mode else "relaxed"
@@ -52,33 +41,17 @@ def build_transfer_claim_success_message(result: ClaimMutationResult) -> str:
 
 def build_unclaim_success_message(result: ClaimMutationResult) -> str:
     if not result.changed:
-        return (
-            "当前 ticket 尚未被认领。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`"
-        )
+        return f"当前 ticket 尚未被认领。\n- Ticket ID：`{result.ticket.ticket_id}`"
 
     forced_text = "（由管理员强制取消）" if result.forced else ""
-    return (
-        "ticket 已取消认领。\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-        f"- 原认领者：<@{result.previous_claimer_id}> {forced_text}".rstrip()
-    )
+    return f"ticket 已取消认领。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 原认领者：<@{result.previous_claimer_id}> {forced_text}".rstrip()
 
 
 def build_rename_success_message(result: TicketRenameResult) -> str:
     if not result.changed:
-        return (
-            "当前 ticket 标题未变化。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 当前频道名：`{result.new_name}`"
-        )
+        return f"当前 ticket 标题未变化。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 当前频道名：`{result.new_name}`"
 
-    return (
-        "ticket 标题已更新。\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-        f"- 旧频道名：`{result.old_name}`\n"
-        f"- 新频道名：`{result.new_name}`"
-    )
+    return f"ticket 标题已更新。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 旧频道名：`{result.old_name}`\n- 新频道名：`{result.new_name}`"
 
 
 def build_mute_success_message(result: MuteMutationResult) -> str:
@@ -103,26 +76,14 @@ def build_mute_success_message(result: MuteMutationResult) -> str:
 
 def build_unmute_success_message(result: UnmuteMutationResult) -> str:
     if not result.changed:
-        return (
-            "目标成员当前未处于 ticket mute 状态。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 目标成员：<@{result.target_id}>"
-        )
-    return (
-        "ticket mute 已解除。\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-        f"- 目标成员：<@{result.target_id}>"
-    )
+        return f"目标成员当前未处于 ticket mute 状态。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 目标成员：<@{result.target_id}>"
+    return f"ticket mute 已解除。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 目标成员：<@{result.target_id}>"
 
 
 def build_priority_success_message(result: PriorityUpdateResult) -> str:
     new_priority_label = _get_priority_label(result.new_priority)
     if not result.changed:
-        return (
-            "当前 ticket 已是该优先级，频道名前缀也已是最新状态。\n"
-            f"- Ticket ID：`{result.ticket_id}`\n"
-            f"- 当前优先级：{new_priority_label}"
-        )
+        return f"当前 ticket 已是该优先级，频道名前缀也已是最新状态。\n- Ticket ID：`{result.ticket_id}`\n- 当前优先级：{new_priority_label}"
 
     old_priority_label = _get_priority_label(result.old_priority)
     return (
@@ -160,11 +121,7 @@ def build_transfer_success_message(result: TransferMutationResult) -> str:
 
 
 def build_untransfer_success_message(result: TransferCancellationResult) -> str:
-    message = (
-        "ticket 已撤销 transferring。\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-        f"- 恢复状态：{result.restored_status.value}"
-    )
+    message = f"ticket 已撤销 transferring。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 恢复状态：{result.restored_status.value}"
     if result.previous_target_category_key is not None:
         message = f"{message}\n- 原目标分类：`{result.previous_target_category_key}`"
     if result.reason is None:

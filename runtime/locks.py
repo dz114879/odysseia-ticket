@@ -50,11 +50,7 @@ class LockManager:
 
     def cleanup(self, *, stale_after_seconds: float = 3600) -> int:
         now = monotonic()
-        removable_keys = [
-            key
-            for key, entry in self._locks.items()
-            if not entry.lock.locked() and now - entry.last_used_at >= stale_after_seconds
-        ]
+        removable_keys = [key for key, entry in self._locks.items() if not entry.lock.locked() and now - entry.last_used_at >= stale_after_seconds]
         for key in removable_keys:
             self._locks.pop(key, None)
         return len(removable_keys)

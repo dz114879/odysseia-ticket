@@ -227,9 +227,7 @@ class PanelService:
         try:
             return await channel.fetch_message(panel.message_id)
         except Exception as exc:
-            raise ValidationError(
-                "当前 active panel 消息不存在，请改用 /ticket panel create 重新发送。"
-            ) from exc
+            raise ValidationError("当前 active panel 消息不存在，请改用 /ticket panel create 重新发送。") from exc
 
     async def _resolve_channel(self, channel_id: int) -> Any:
         if self.bot is None:

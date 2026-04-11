@@ -105,9 +105,7 @@ async def test_sweep_recoverable_tickets_dispatches_due_and_recoverable_states(s
         logging_service=logging_service,
     )
 
-    await service.sweep_recoverable_tickets(
-        reference_time=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc)
-    )
+    await service.sweep_recoverable_tickets(reference_time=datetime(2024, 1, 1, 12, 0, tzinfo=timezone.utc))
 
     called_ticket_ids = [call.args[0] for call in archive_service.archive_ticket.await_args_list]
     assert called_ticket_ids == [

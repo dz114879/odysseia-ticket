@@ -272,22 +272,28 @@ async def test_snapshot_service_handles_uncached_raw_edit_and_delete_events(
     latest_state = restarted_service.cache.get_snapshot_state(channel.id, original_message.id)
     assert latest_state is not None
     assert latest_state.content == "重启后已编辑"
-    assert await restarted_service.handle_raw_message_edit(
-        FakeRawMessageUpdatePayload(
-            channel_id=channel.id,
-            message_id=original_message.id,
-            data={"content": "会被缓存事件接管"},
-            cached_message=original_message,
+    assert (
+        await restarted_service.handle_raw_message_edit(
+            FakeRawMessageUpdatePayload(
+                channel_id=channel.id,
+                message_id=original_message.id,
+                data={"content": "会被缓存事件接管"},
+                cached_message=original_message,
+            )
         )
-    ) is False
+        is False
+    )
 
-    assert await restarted_service.handle_raw_message_delete(
-        FakeRawMessageDeletePayload(channel_id=channel.id, message_id=original_message.id)
-    ) is True
+    assert (
+        await restarted_service.handle_raw_message_delete(FakeRawMessageDeletePayload(channel_id=channel.id, message_id=original_message.id)) is True
+    )
     assert restarted_service.cache.get_snapshot_state(channel.id, original_message.id) is None
-    assert await restarted_service.handle_raw_message_delete(
-        FakeRawMessageDeletePayload(channel_id=channel.id, message_id=original_message.id, cached_message=original_message)
-    ) is False
+    assert (
+        await restarted_service.handle_raw_message_delete(
+            FakeRawMessageDeletePayload(channel_id=channel.id, message_id=original_message.id, cached_message=original_message)
+        )
+        is False
+    )
     assert [record["event"] for record in snapshot_store.read_records(ticket.ticket_id)] == ["create", "edit", "delete"]
 
 
@@ -336,7 +342,7 @@ async def test_snapshot_service_rebuilds_runtime_cache_from_snapshot_file(prepar
     path = snapshot_store.get_path(ticket.ticket_id)
     path.write_text(
         '{"event":"create","message_id":1,"author_id":201,"author_name":"creator","timestamp":"2024-01-01T00:00:00+00:00","content":"hello","attachments":[]}\n'
-        '{broken-json\n'
+        "{broken-json\n"
         '{"event":"edit","message_id":1,"author_id":201,"author_name":"creator","timestamp":"2024-01-01T00:01:00+00:00","old_content":"hello","new_content":"hello!!!","old_attachments":[],"new_attachments":[]}\n'
         '{"event":"delete","message_id":2,"author_id":301,"author_name":"staff","timestamp":"2024-01-01T00:02:00+00:00","deleted_content":"gone","deleted_attachments":[]}\n',
         encoding="utf-8",

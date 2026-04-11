@@ -3,16 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 DEFAULT_PANEL_TITLE = "🎫 Ticket 支持中心"
-DEFAULT_PANEL_DESCRIPTION = (
-    "欢迎使用 Odysseia Ticket 系统。\n"
-    "请选择最符合您问题的分类，系统会在下一阶段进入私密处理流程。"
-)
-DEFAULT_PANEL_BULLET_POINTS = (
-    "• 技术问题反馈\n"
-    "• 社区运营建议\n"
-    "• 违规行为投诉\n"
-    "• 处罚申诉与答题申诉"
-)
+DEFAULT_PANEL_DESCRIPTION = "欢迎使用 Odysseia Ticket 系统。\n请选择最符合您问题的分类，系统会在下一阶段进入私密处理流程。"
+DEFAULT_PANEL_BULLET_POINTS = "• 技术问题反馈\n• 社区运营建议\n• 违规行为投诉\n• 处罚申诉与答题申诉"
 DEFAULT_PANEL_CAPACITY_TEXT = "当前容量状态：可用"
 DEFAULT_PANEL_FOOTER_TEXT = "请选择下方分类开始。"
 

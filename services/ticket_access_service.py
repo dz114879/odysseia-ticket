@@ -50,9 +50,7 @@ class TicketAccessService:
             is_bot_owner=is_bot_owner,
         ):
             return
-        raise PermissionDeniedError(
-            "只有当前 ticket 创建者、当前分类 staff、Ticket 管理员或 Bot 所有者可以查看快照记录。"
-        )
+        raise PermissionDeniedError("只有当前 ticket 创建者、当前分类 staff、Ticket 管理员或 Bot 所有者可以查看快照记录。")
 
     def assert_can_manage_notes(
         self,

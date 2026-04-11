@@ -9,11 +9,7 @@ if TYPE_CHECKING:
 
 def build_close_feedback_message(result: CloseMutationResult) -> str:
     if not result.changed:
-        return (
-            "当前 ticket 已处于 closing 流程中。\n"
-            f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-            f"- 计划归档时间：{result.close_execute_at or '未知'}"
-        )
+        return f"当前 ticket 已处于 closing 流程中。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 计划归档时间：{result.close_execute_at or '未知'}"
 
     lines = [
         "ticket 已进入 closing。",
@@ -44,8 +40,4 @@ def build_close_request_feedback_message(result: CloseRequestCreationResult) -> 
 
 
 def build_revoke_close_feedback_message(result: CloseRevokeResult) -> str:
-    return (
-        "ticket closing 已撤销。\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`\n"
-        f"- 恢复状态：`{result.restored_status.value}`"
-    )
+    return f"ticket closing 已撤销。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 恢复状态：`{result.restored_status.value}`"

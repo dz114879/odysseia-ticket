@@ -114,11 +114,14 @@ class SnapshotService:
             self._restore_threshold_flags(channel_id, create_count)
 
             bootstrapped_at = utc_now_iso()
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                snapshot_bootstrapped_at=bootstrapped_at,
-                message_count=create_count,
-            ) or refreshed_ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    snapshot_bootstrapped_at=bootstrapped_at,
+                    message_count=create_count,
+                )
+                or refreshed_ticket
+            )
             return SnapshotBootstrapResult(
                 ticket=updated_ticket,
                 create_count=create_count,
@@ -193,11 +196,7 @@ class SnapshotService:
             previous_state = self._resolve_latest_state(current_ticket, channel_id, message_id)
             next_content = self._normalize_content(getattr(after, "content", ""))
             next_attachments = self._format_attachments(getattr(after, "attachments", None) or [])
-            if (
-                previous_state is not None
-                and previous_state.content == next_content
-                and list(previous_state.attachments) == next_attachments
-            ):
+            if previous_state is not None and previous_state.content == next_content and list(previous_state.attachments) == next_attachments:
                 return False
 
             old_content = previous_state.content if previous_state is not None else _UNKNOWN_OLD_CONTENT
@@ -207,9 +206,7 @@ class SnapshotService:
                 "message_id": message_id,
                 "author_id": getattr(getattr(after, "author", None), "id", None),
                 "author_name": self._resolve_author_name(getattr(after, "author", None)),
-                "timestamp": self._format_timestamp(
-                    getattr(after, "edited_at", None) or getattr(after, "created_at", None)
-                ),
+                "timestamp": self._format_timestamp(getattr(after, "edited_at", None) or getattr(after, "created_at", None)),
                 "old_content": old_content,
                 "new_content": next_content,
                 "old_attachments": old_attachments,
@@ -269,11 +266,7 @@ class SnapshotService:
                 if has_attachment_update
                 else (list(previous_state.attachments) if previous_state is not None else [])
             )
-            if (
-                previous_state is not None
-                and previous_state.content == next_content
-                and list(previous_state.attachments) == next_attachments
-            ):
+            if previous_state is not None and previous_state.content == next_content and list(previous_state.attachments) == next_attachments:
                 return False
 
             author_id, author_name = self._resolve_raw_author(payload_data.get("author"), previous_state)
@@ -502,26 +495,14 @@ class SnapshotService:
         if channel_id is None or send is None:
             return
 
-        if (
-            create_count >= self.create_warning_threshold
-            and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_900")
-        ):
-            await send(
-                content=(
-                    f"⚠️ 当前 ticket 快照已记录 {create_count} 条消息，"
-                    "接近上限，请尽量尽快处理或关闭。"
-                )
-            )
+        if create_count >= self.create_warning_threshold and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_900"):
+            await send(content=(f"⚠️ 当前 ticket 快照已记录 {create_count} 条消息，接近上限，请尽量尽快处理或关闭。"))
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_900")
 
-        if (
-            create_count >= self.create_limit
-            and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_1000")
-        ):
+        if create_count >= self.create_limit and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_1000"):
             await send(
                 content=(
-                    f"⚠️ 当前 ticket 快照已达到 {self.create_limit} 条 create 上限，"
-                    "后续新消息将不再继续记录 create 快照，但 edit/delete 仍会保留。"
+                    f"⚠️ 当前 ticket 快照已达到 {self.create_limit} 条 create 上限，后续新消息将不再继续记录 create 快照，但 edit/delete 仍会保留。"
                 )
             )
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_1000")
@@ -532,9 +513,7 @@ class SnapshotService:
                     guild_id=ticket.guild_id,
                     level="warning",
                     title="Ticket snapshot create cap reached",
-                    description=(
-                        f"Ticket `{ticket.ticket_id}` 已达到 {self.create_limit} 条 create 快照上限。"
-                    ),
+                    description=(f"Ticket `{ticket.ticket_id}` 已达到 {self.create_limit} 条 create 快照上限。"),
                     channel_id=getattr(config, "log_channel_id", None),
                     extra={"channel_id": channel_id, "create_count": create_count},
                 )
@@ -591,11 +570,7 @@ class SnapshotService:
 
     @staticmethod
     def _resolve_author_name(author: Any) -> str:
-        return str(
-            getattr(author, "display_name", None)
-            or getattr(author, "name", None)
-            or getattr(author, "id", "Unknown")
-        )
+        return str(getattr(author, "display_name", None) or getattr(author, "name", None) or getattr(author, "id", "Unknown"))
 
     @staticmethod
     def _resolve_raw_author(

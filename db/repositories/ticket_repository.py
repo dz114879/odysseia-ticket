@@ -30,11 +30,7 @@ class TicketRepository(BaseRepository):
             last_user_message_at=row["last_user_message_at"],
             claimed_by=row["claimed_by"],
             priority=TicketPriority(row["priority"]),
-            priority_before_sleep=(
-                TicketPriority(row["priority_before_sleep"])
-                if row["priority_before_sleep"]
-                else None
-            ),
+            priority_before_sleep=(TicketPriority(row["priority_before_sleep"]) if row["priority_before_sleep"] else None),
             status_before=TicketStatus(row["status_before"]) if row["status_before"] else None,
             transfer_target_category=row["transfer_target_category"],
             transfer_initiated_by=row["transfer_initiated_by"],
@@ -361,11 +357,7 @@ class TicketRepository(BaseRepository):
             clauses.append("creator_id = ?")
             parameters.append(creator_id)
 
-        query = (
-            "SELECT * FROM tickets "
-            f"WHERE {' AND '.join(clauses)} "
-            "ORDER BY created_at ASC;"
-        )
+        query = f"SELECT * FROM tickets WHERE {' AND '.join(clauses)} ORDER BY created_at ASC;"
         with self.read_connection(connection) as current_connection:
             rows = current_connection.execute(query, parameters).fetchall()
         return [self._row_to_record(row) for row in rows]
@@ -381,11 +373,7 @@ class TicketRepository(BaseRepository):
 
         placeholders = ", ".join("?" for _ in statuses)
         parameters = [status.value for status in statuses]
-        query = (
-            "SELECT * FROM tickets "
-            f"WHERE status IN ({placeholders}) "
-            "ORDER BY created_at ASC;"
-        )
+        query = f"SELECT * FROM tickets WHERE status IN ({placeholders}) ORDER BY created_at ASC;"
 
         with self.read_connection(connection) as current_connection:
             rows = current_connection.execute(query, parameters).fetchall()
@@ -435,11 +423,7 @@ class TicketRepository(BaseRepository):
         *,
         connection: sqlite3.Connection | None = None,
     ) -> list[TicketRecord]:
-        query = (
-            "SELECT * FROM tickets "
-            "WHERE guild_id = ? AND status = ? "
-            "ORDER BY COALESCE(queued_at, created_at) ASC, created_at ASC, ticket_id ASC;"
-        )
+        query = "SELECT * FROM tickets WHERE guild_id = ? AND status = ? ORDER BY COALESCE(queued_at, created_at) ASC, created_at ASC, ticket_id ASC;"
         with self.read_connection(connection) as current_connection:
             rows = current_connection.execute(query, (guild_id, TicketStatus.QUEUED.value)).fetchall()
         return [self._row_to_record(row) for row in rows]
@@ -503,9 +487,7 @@ class TicketRepository(BaseRepository):
         if priority is not UNSET:
             updates["priority"] = priority.value
         if priority_before_sleep is not UNSET:
-            updates["priority_before_sleep"] = (
-                priority_before_sleep.value if priority_before_sleep is not None else None
-            )
+            updates["priority_before_sleep"] = priority_before_sleep.value if priority_before_sleep is not None else None
         if status_before is not UNSET:
             updates["status_before"] = status_before.value if status_before is not None else None
         if transfer_target_category is not UNSET:

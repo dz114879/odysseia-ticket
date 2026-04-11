@@ -11,11 +11,7 @@ class SnapshotQueryService:
         self.snapshot_store = snapshot_store or SnapshotStore()
 
     def get_message_timeline(self, ticket_id: str, message_id: int) -> list[dict[str, Any]]:
-        return [
-            record
-            for record in self.snapshot_store.read_records(ticket_id)
-            if self._coerce_message_id(record.get("message_id")) == message_id
-        ]
+        return [record for record in self.snapshot_store.read_records(ticket_id) if self._coerce_message_id(record.get("message_id")) == message_id]
 
     def format_message_timeline(self, ticket_id: str, message_id: int) -> str:
         timeline = self.get_message_timeline(ticket_id, message_id)
@@ -76,9 +72,7 @@ class SnapshotQueryService:
             grouped_records[message_id].append(record)
 
         deleted_message_ids = [
-            message_id
-            for message_id, records in grouped_records.items()
-            if any(str(record.get("event")) == "delete" for record in records)
+            message_id for message_id, records in grouped_records.items() if any(str(record.get("event")) == "delete" for record in records)
         ]
         if not deleted_message_ids:
             return f"ticket `{ticket_id}` 当前没有已删除消息的快照记录。"

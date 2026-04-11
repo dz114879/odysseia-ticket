@@ -59,8 +59,4 @@ class CleanupService:
         if not directory.exists():
             return []
 
-        return sorted(
-            path
-            for path in directory.glob(f"{ticket_id}-*")
-            if path.is_file()
-        )
+        return sorted(path for path in directory.glob(f"{ticket_id}-*") if path.is_file())

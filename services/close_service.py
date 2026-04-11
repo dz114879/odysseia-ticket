@@ -139,18 +139,19 @@ class CloseService:
 
             normalized_reason = self._normalize_reason(reason)
             close_started_at = datetime.now(timezone.utc)
-            close_execute_at = (
-                close_started_at + timedelta(seconds=CLOSE_REVOKE_WINDOW_SECONDS)
-            ).isoformat()
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                status=TicketStatus.CLOSING,
-                status_before=context.ticket.status,
-                close_reason=normalized_reason,
-                close_initiated_by=actor_id,
-                close_execute_at=close_execute_at,
-                closed_at=close_started_at.isoformat(),
-            ) or context.ticket
+            close_execute_at = (close_started_at + timedelta(seconds=CLOSE_REVOKE_WINDOW_SECONDS)).isoformat()
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    status=TicketStatus.CLOSING,
+                    status_before=context.ticket.status,
+                    close_reason=normalized_reason,
+                    close_initiated_by=actor_id,
+                    close_execute_at=close_execute_at,
+                    closed_at=close_started_at.isoformat(),
+                )
+                or context.ticket
+            )
 
             try:
                 await self._freeze_ticket_permissions(channel, context=context)
@@ -210,15 +211,18 @@ class CloseService:
                 raise InvalidTicketStateError("关闭撤销窗口已结束，当前 ticket 正在进入归档。")
 
             restored_status = context.ticket.status_before or TicketStatus.SUBMITTED
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                status=restored_status,
-                status_before=None,
-                close_reason=None,
-                close_initiated_by=None,
-                close_execute_at=None,
-                closed_at=None,
-            ) or context.ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    status=restored_status,
+                    status_before=None,
+                    close_reason=None,
+                    close_initiated_by=None,
+                    close_execute_at=None,
+                    closed_at=None,
+                )
+                or context.ticket
+            )
             await self._restore_ticket_permissions(
                 channel,
                 context=context,
@@ -226,10 +230,7 @@ class CloseService:
             )
             log_message = await self._send_channel_log(
                 channel,
-                content=(
-                    f"↩️ <@{actor_id}> 已撤销 ticket `{updated_ticket.ticket_id}` 的关闭流程。\n"
-                    f"- 恢复状态：`{restored_status.value}`"
-                ),
+                content=(f"↩️ <@{actor_id}> 已撤销 ticket `{updated_ticket.ticket_id}` 的关闭流程。\n- 恢复状态：`{restored_status.value}`"),
             )
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(updated_ticket.ticket_id)
@@ -428,9 +429,7 @@ class CloseService:
         if capacity.has_capacity:
             return
 
-        raise ValidationError(
-            f"当前 active 容量已满（{capacity.active_count}/{context.config.max_open_tickets}），暂时无法从 sleep 发起 close。"
-        )
+        raise ValidationError(f"当前 active 容量已满（{capacity.active_count}/{context.config.max_open_tickets}），暂时无法从 sleep 发起 close。")
 
     @staticmethod
     def _normalize_reason(reason: str | None) -> str | None:

@@ -133,9 +133,7 @@ class TransferService:
         )
 
         if context.ticket.claimed_by is not None and context.ticket.claimed_by != actor_id:
-            raise PermissionDeniedError(
-                "当前 ticket 已被其他 staff 认领；请先由当前认领者发起转交，或先取消认领。"
-            )
+            raise PermissionDeniedError("当前 ticket 已被其他 staff 认领；请先由当前认领者发起转交，或先取消认领。")
 
         target_categories = [
             category
@@ -184,15 +182,18 @@ class TransferService:
                 target_category_key=normalized_target_category_key,
             )
             ticket = preparation.context.ticket
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.TRANSFERRING,
-                status_before=ticket.status,
-                transfer_target_category=target_category.category_key,
-                transfer_initiated_by=actor_id,
-                transfer_reason=normalized_reason,
-                transfer_execute_at=scheduled_execute_at,
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.TRANSFERRING,
+                    status_before=ticket.status,
+                    transfer_target_category=target_category.category_key,
+                    transfer_initiated_by=actor_id,
+                    transfer_reason=normalized_reason,
+                    transfer_execute_at=scheduled_execute_at,
+                )
+                or ticket
+            )
             log_message = await self._send_channel_log(
                 channel,
                 content=self._build_transfer_log_content(
@@ -246,15 +247,18 @@ class TransferService:
                 is_bot_owner=is_bot_owner,
             )
             restored_status = self._resolve_restored_status(context.ticket)
-            updated_ticket = self.ticket_repository.update(
-                context.ticket.ticket_id,
-                status=restored_status,
-                status_before=None,
-                transfer_target_category=None,
-                transfer_initiated_by=None,
-                transfer_reason=None,
-                transfer_execute_at=None,
-            ) or context.ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    context.ticket.ticket_id,
+                    status=restored_status,
+                    status_before=None,
+                    transfer_target_category=None,
+                    transfer_initiated_by=None,
+                    transfer_reason=None,
+                    transfer_execute_at=None,
+                )
+                or context.ticket
+            )
             log_message = await self._send_channel_log(
                 channel,
                 content=self._build_cancel_transfer_log_content(
@@ -333,18 +337,21 @@ class TransferService:
                 restored_status=restored_status,
             )
 
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                category_key=target_category.category_key,
-                claimed_by=None,
-                status=restored_status,
-                status_before=None,
-                transfer_target_category=None,
-                transfer_initiated_by=None,
-                transfer_reason=None,
-                transfer_execute_at=None,
-                transfer_history_json=history_json,
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    category_key=target_category.category_key,
+                    claimed_by=None,
+                    status=restored_status,
+                    status_before=None,
+                    transfer_target_category=None,
+                    transfer_initiated_by=None,
+                    transfer_reason=None,
+                    transfer_execute_at=None,
+                    transfer_history_json=history_json,
+                )
+                or ticket
+            )
 
             channel = await self._resolve_channel(updated_ticket.channel_id)
             if channel is not None:
@@ -474,11 +481,7 @@ class TransferService:
         lines = [
             f"↩️ <@{actor_id}> 已撤销 ticket `{ticket_id}` 的跨分类转交。",
             f"- 恢复状态：{TransferService.get_status_label(restored_status)}",
-            (
-                f"- 原目标分类：`{previous_target_category_key}`"
-                if previous_target_category_key is not None
-                else "- 原目标分类：未知"
-            ),
+            (f"- 原目标分类：`{previous_target_category_key}`" if previous_target_category_key is not None else "- 原目标分类：未知"),
         ]
         if reason is not None:
             lines.append(f"- 原转交理由：{reason}")
@@ -496,9 +499,7 @@ class TransferService:
         reason: str | None,
         executed_at: str,
     ) -> str:
-        previous_category_name = (
-            previous_category.display_name if previous_category is not None else previous_category_key
-        )
+        previous_category_name = previous_category.display_name if previous_category is not None else previous_category_key
         lines = [
             f"✅ ticket `{ticket_id}` 的跨分类转交已执行。",
             f"- 原分类：{previous_category_name} (`{previous_category_key}`)",
@@ -609,10 +610,7 @@ class TransferService:
     def _resolve_muted_participants(self, channel: Any, ticket_id: str) -> list[Any]:
         return [
             member
-            for member in (
-                self._resolve_channel_member(channel, record.user_id)
-                for record in self.ticket_mute_repository.list_by_ticket(ticket_id)
-            )
+            for member in (self._resolve_channel_member(channel, record.user_id) for record in self.ticket_mute_repository.list_by_ticket(ticket_id))
             if member is not None
         ]
 
@@ -642,9 +640,7 @@ class TransferService:
         if self.logging_service is None:
             return False
 
-        previous_category_name = (
-            previous_category.display_name if previous_category is not None else previous_category_key
-        )
+        previous_category_name = previous_category.display_name if previous_category is not None else previous_category_key
         description = (
             f"ticket `{ticket.ticket_id}` 已完成跨分类转交："
             f" `{previous_category_key}` -> `{target_category.category_key}`，"

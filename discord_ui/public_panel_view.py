@@ -19,12 +19,7 @@ if TYPE_CHECKING:
 
 
 def build_public_panel_custom_id(guild_id: int, nonce: str) -> str:
-    return (
-        f"{PANEL_CUSTOM_ID_PREFIX}"
-        f"{CUSTOM_ID_SEPARATOR}create"
-        f"{CUSTOM_ID_SEPARATOR}{guild_id}"
-        f"{CUSTOM_ID_SEPARATOR}{nonce}"
-    )
+    return f"{PANEL_CUSTOM_ID_PREFIX}{CUSTOM_ID_SEPARATOR}create{CUSTOM_ID_SEPARATOR}{guild_id}{CUSTOM_ID_SEPARATOR}{nonce}"
 
 
 def build_draft_confirm_custom_id(guild_id: int, nonce: str, category_key: str) -> str:
@@ -193,11 +188,7 @@ def _build_draft_creation_feedback(result: DraftCreationResult) -> str:
             "请进入频道发送第一条消息描述问题。"
         )
 
-    return (
-        "您已有进行中的 draft ticket。\n"
-        f"- 频道：{channel_reference}\n"
-        f"- Ticket ID：`{result.ticket.ticket_id}`"
-    )
+    return f"您已有进行中的 draft ticket。\n- 频道：{channel_reference}\n- Ticket ID：`{result.ticket.ticket_id}`"
 
 
 class PublicPanelView(discord.ui.View):

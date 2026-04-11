@@ -187,7 +187,6 @@ class StaffPermissionService:
 
         return updates
 
-
     def build_staff_overwrite_plan(
         self,
         guild: Any,

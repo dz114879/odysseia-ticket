@@ -75,9 +75,7 @@ class FakeBot:
 
 
 def get_panel_child(view: StaffPanelView, action: str):
-    return next(
-        child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id(action)
-    )
+    return next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id(action))
 
 
 @pytest.fixture

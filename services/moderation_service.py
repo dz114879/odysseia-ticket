@@ -260,9 +260,7 @@ class ModerationService:
 
             log_message = await self._send_channel_log(
                 channel,
-                content=(
-                    f"🔊 <@{getattr(actor, 'id', None)}> 已解除 ticket `{context.ticket.ticket_id}` 对 <@{target_id}> 的禁言。"
-                ),
+                content=(f"🔊 <@{getattr(actor, 'id', None)}> 已解除 ticket `{context.ticket.ticket_id}` 对 <@{target_id}> 的禁言。"),
             )
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(context.ticket.ticket_id)
@@ -347,9 +345,7 @@ class ModerationService:
 
             log_message = await self._send_channel_log(
                 channel,
-                content=(
-                    f"⏰ ticket `{ticket.ticket_id}` 对 <@{user_id}> 的临时禁言已自动解除。"
-                ),
+                content=(f"⏰ ticket `{ticket.ticket_id}` 对 <@{user_id}> 的临时禁言已自动解除。"),
             )
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(ticket.ticket_id)
@@ -399,10 +395,7 @@ class ModerationService:
         if not callable(overwrites_for):
             return False
         overwrite = overwrites_for(target)
-        return any(
-            getattr(overwrite, field, None) is True
-            for field in ("view_channel", "send_messages", "read_message_history")
-        )
+        return any(getattr(overwrite, field, None) is True for field in ("view_channel", "send_messages", "read_message_history"))
 
     async def _resolve_channel(self, channel_id: int | None) -> Any | None:
         if self.bot is None or channel_id is None:
@@ -447,10 +440,7 @@ class ModerationService:
     def _resolve_muted_participants(self, channel: Any, ticket_id: str) -> list[Any]:
         return [
             member
-            for member in (
-                self._resolve_channel_member(channel, record.user_id)
-                for record in self.ticket_mute_repository.list_by_ticket(ticket_id)
-            )
+            for member in (self._resolve_channel_member(channel, record.user_id) for record in self.ticket_mute_repository.list_by_ticket(ticket_id))
             if member is not None
         ]
 

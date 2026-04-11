@@ -182,11 +182,7 @@ class CloseRequestService:
         )
         send = getattr(channel, "send", None)
         if send is not None:
-            await send(
-                content=(
-                    f"🙅 <@{actor_id}> 已拒绝 <@{requester_id}> 对 ticket `{context.ticket.ticket_id}` 的关闭请求。"
-                )
-            )
+            await send(content=(f"🙅 <@{actor_id}> 已拒绝 <@{requester_id}> 对 ticket `{context.ticket.ticket_id}` 的关闭请求。"))
 
     async def expire_request_message(
         self,

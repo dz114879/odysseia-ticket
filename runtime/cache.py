@@ -48,11 +48,7 @@ class TTLCache(Generic[T]):
 
     def clear_expired(self) -> int:
         now = monotonic()
-        expired_keys = [
-            key
-            for key, item in self._items.items()
-            if item.expires_at is not None and item.expires_at <= now
-        ]
+        expired_keys = [key for key, item in self._items.items() if item.expires_at is not None and item.expires_at <= now]
         for key in expired_keys:
             self._items.pop(key, None)
         return len(expired_keys)
@@ -112,14 +108,10 @@ class RuntimeCacheStore:
         channel_id: int,
         message_id: int,
     ) -> SnapshotLatestState | None:
-        return self.snapshot_latest_messages.get(
-            self._snapshot_message_key(channel_id, message_id)
-        )
+        return self.snapshot_latest_messages.get(self._snapshot_message_key(channel_id, message_id))
 
     def forget_snapshot_state(self, channel_id: int, message_id: int) -> SnapshotLatestState | None:
-        return self.snapshot_latest_messages.pop(
-            self._snapshot_message_key(channel_id, message_id)
-        )
+        return self.snapshot_latest_messages.pop(self._snapshot_message_key(channel_id, message_id))
 
     def set_snapshot_message_count(
         self,

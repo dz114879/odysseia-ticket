@@ -91,11 +91,14 @@ class ArchiveService:
                 return self._build_result(ticket)
 
             if ticket.status is TicketStatus.ARCHIVE_FAILED and allow_retry_from_failed:
-                ticket = self.ticket_repository.update(
-                    ticket.ticket_id,
-                    status=TicketStatus.ARCHIVING,
-                    archive_last_error=None,
-                ) or ticket
+                ticket = (
+                    self.ticket_repository.update(
+                        ticket.ticket_id,
+                        status=TicketStatus.ARCHIVING,
+                        archive_last_error=None,
+                    )
+                    or ticket
+                )
 
             if ticket.status is TicketStatus.CLOSING:
                 ticket = self._advance_closing_to_archiving_if_due(
@@ -141,11 +144,14 @@ class ArchiveService:
     ) -> TicketRecord | None:
         if not ignore_due_time and not self._is_due_for_archiving(ticket, reference_time):
             return None
-        return self.ticket_repository.update(
-            ticket.ticket_id,
-            status=TicketStatus.ARCHIVING,
-            archive_last_error=None,
-        ) or ticket
+        return (
+            self.ticket_repository.update(
+                ticket.ticket_id,
+                status=TicketStatus.ARCHIVING,
+                archive_last_error=None,
+            )
+            or ticket
+        )
 
     async def _ensure_archive_materialized(
         self,
@@ -154,11 +160,14 @@ class ArchiveService:
         force_fallback: bool,
     ) -> TicketRecord:
         if ticket.archive_message_id is not None:
-            return self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.ARCHIVE_SENT,
-                archive_last_error=None,
-            ) or ticket
+            return (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.ARCHIVE_SENT,
+                    archive_last_error=None,
+                )
+                or ticket
+            )
 
         archive_channel = await self._resolve_archive_channel(ticket)
         if archive_channel is None:
@@ -189,14 +198,17 @@ class ArchiveService:
         except Exception as exc:
             return await self._mark_archive_failed(ticket, reason=f"archive send failed: {exc}")
 
-        return self.ticket_repository.update(
-            ticket.ticket_id,
-            status=TicketStatus.ARCHIVE_SENT,
-            archive_message_id=getattr(archive_message, "id", None),
-            archive_last_error=None,
-            archived_at=archived_at,
-            message_count=render_result.message_count,
-        ) or ticket
+        return (
+            self.ticket_repository.update(
+                ticket.ticket_id,
+                status=TicketStatus.ARCHIVE_SENT,
+                archive_message_id=getattr(archive_message, "id", None),
+                archive_last_error=None,
+                archived_at=archived_at,
+                message_count=render_result.message_count,
+            )
+            or ticket
+        )
 
     async def _render_archive_material(
         self,
@@ -225,11 +237,7 @@ class ArchiveService:
         try:
             render_result = await self.render_service.render_fallback_transcript(ticket=ticket)
         except Exception as exc:
-            reason = (
-                f"{live_failure_reason}; fallback render failed: {exc}"
-                if live_failure_reason
-                else f"fallback render failed: {exc}"
-            )
+            reason = f"{live_failure_reason}; fallback render failed: {exc}" if live_failure_reason else f"fallback render failed: {exc}"
             await self._send_ticket_log(
                 ticket,
                 level="warning",
@@ -294,20 +302,23 @@ class ArchiveService:
             )
             return ticket, False
 
-        updated_ticket = self.ticket_repository.update(
-            ticket.ticket_id,
-            status=TicketStatus.DONE,
-            status_before=None,
-            close_execute_at=None,
-            transfer_target_category=None,
-            transfer_initiated_by=None,
-            transfer_reason=None,
-            transfer_execute_at=None,
-            transfer_history_json="[]",
-            staff_panel_message_id=None,
-            priority_before_sleep=None,
-            archive_last_error=None,
-        ) or ticket
+        updated_ticket = (
+            self.ticket_repository.update(
+                ticket.ticket_id,
+                status=TicketStatus.DONE,
+                status_before=None,
+                close_execute_at=None,
+                transfer_target_category=None,
+                transfer_initiated_by=None,
+                transfer_reason=None,
+                transfer_execute_at=None,
+                transfer_history_json="[]",
+                staff_panel_message_id=None,
+                priority_before_sleep=None,
+                archive_last_error=None,
+            )
+            or ticket
+        )
         return updated_ticket, True
 
     async def _resolve_archive_channel(self, ticket: TicketRecord) -> Any | None:
@@ -368,12 +379,15 @@ class ArchiveService:
     async def _mark_archive_failed(self, ticket: TicketRecord, *, reason: str) -> TicketRecord:
         attempts = int(ticket.archive_attempts or 0) + 1
         self.logger.warning("Archive failed. ticket_id=%s reason=%s", ticket.ticket_id, reason)
-        updated_ticket = self.ticket_repository.update(
-            ticket.ticket_id,
-            status=TicketStatus.ARCHIVE_FAILED,
-            archive_last_error=reason,
-            archive_attempts=attempts,
-        ) or ticket
+        updated_ticket = (
+            self.ticket_repository.update(
+                ticket.ticket_id,
+                status=TicketStatus.ARCHIVE_FAILED,
+                archive_last_error=reason,
+                archive_attempts=attempts,
+            )
+            or ticket
+        )
         await self._send_ticket_log(
             updated_ticket,
             level="error",
@@ -440,7 +454,9 @@ class ArchiveService:
             ticket=ticket,
             archive_message_id=ticket.archive_message_id,
             message_count=ticket.message_count or 0,
-            archive_sent=archive_sent or ticket.status in {TicketStatus.ARCHIVE_SENT, TicketStatus.CHANNEL_DELETED, TicketStatus.DONE} or ticket.archive_message_id is not None,
+            archive_sent=archive_sent
+            or ticket.status in {TicketStatus.ARCHIVE_SENT, TicketStatus.CHANNEL_DELETED, TicketStatus.DONE}
+            or ticket.archive_message_id is not None,
             channel_deleted=channel_deleted or ticket.status in {TicketStatus.CHANNEL_DELETED, TicketStatus.DONE},
             cleaned_up=cleaned_up or ticket.status is TicketStatus.DONE,
             final_status=ticket.status,

@@ -138,12 +138,15 @@ class SleepService:
             new_channel_name = self.build_sleep_channel_name(old_channel_name)
             channel_name_changed = new_channel_name != old_channel_name
 
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.SLEEP,
-                priority=TicketPriority.SLEEP,
-                priority_before_sleep=preparation.previous_priority,
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.SLEEP,
+                    priority=TicketPriority.SLEEP,
+                    priority_before_sleep=preparation.previous_priority,
+                )
+                or ticket
+            )
 
             try:
                 if channel_name_changed:
@@ -230,12 +233,15 @@ class SleepService:
             new_channel_name = self.build_wake_channel_name(old_channel_name, priority=restored_priority)
             channel_name_changed = new_channel_name != old_channel_name
 
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.SUBMITTED,
-                priority=restored_priority,
-                priority_before_sleep=None,
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.SUBMITTED,
+                    priority=restored_priority,
+                    priority_before_sleep=None,
+                )
+                or ticket
+            )
 
             try:
                 if channel_name_changed:
@@ -261,8 +267,7 @@ class SleepService:
             log_message = await self._send_channel_log(
                 channel,
                 content=(
-                    f"🌅 <@{actor_id}> 的新消息已唤醒 ticket `{ticket.ticket_id}`。\n"
-                    f"- 恢复优先级：{self.get_priority_label(restored_priority)}"
+                    f"🌅 <@{actor_id}> 的新消息已唤醒 ticket `{ticket.ticket_id}`。\n- 恢复优先级：{self.get_priority_label(restored_priority)}"
                 ),
             )
             if self.staff_panel_service is not None:

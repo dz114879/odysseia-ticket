@@ -70,11 +70,7 @@ class CapacityService:
             statuses=ACTIVE_CAPACITY_STATUSES,
             connection=connection,
         )
-        return sum(
-            1
-            for ticket in active_tickets
-            if exclude_ticket_id is None or ticket.ticket_id != exclude_ticket_id
-        )
+        return sum(1 for ticket in active_tickets if exclude_ticket_id is None or ticket.ticket_id != exclude_ticket_id)
 
     @staticmethod
     def is_capacity_consuming_status(status: TicketStatus | None) -> bool:

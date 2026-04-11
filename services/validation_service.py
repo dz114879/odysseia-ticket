@@ -14,11 +14,9 @@ from db.repositories.panel_repository import PanelRepository
 class GuildLike(Protocol):
     id: int
 
-    def get_channel(self, channel_id: int) -> object | None:
-        ...
+    def get_channel(self, channel_id: int) -> object | None: ...
 
-    def get_role(self, role_id: int) -> object | None:
-        ...
+    def get_role(self, role_id: int) -> object | None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,10 +131,6 @@ class ValidationService:
             if value is None
         ]
         if missing_fields:
-            raise ValidationError(
-                "当前服务器的 Ticket 配置尚未完成：缺少"
-                + "、".join(missing_fields)
-                + "。"
-            )
+            raise ValidationError("当前服务器的 Ticket 配置尚未完成：缺少" + "、".join(missing_fields) + "。")
 
         return config

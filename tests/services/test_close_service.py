@@ -514,7 +514,6 @@ async def test_archive_service_keeps_archive_sent_when_channel_resolution_tempor
     assert channel.deleted is False
 
 
-
 @pytest.mark.asyncio
 async def test_archive_service_uses_snapshot_fallback_when_source_channel_is_missing(
     prepared_close_context,

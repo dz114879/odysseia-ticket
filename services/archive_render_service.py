@@ -141,10 +141,7 @@ class ArchiveRenderService:
                     "author_id": getattr(author, "id", None),
                     "created_at": self._format_timestamp(getattr(message, "created_at", None)),
                     "content": str(getattr(message, "content", "") or ""),
-                    "attachments": [
-                        getattr(attachment, "filename", None) or getattr(attachment, "url", "attachment")
-                        for attachment in attachments
-                    ],
+                    "attachments": [getattr(attachment, "filename", None) or getattr(attachment, "url", "attachment") for attachment in attachments],
                 }
             )
         return normalized_messages
@@ -227,11 +224,7 @@ class ArchiveRenderService:
         }
         for record in timeline_records:
             event = str(record.get("event", "unknown"))
-            latest_state["author_name"] = str(
-                record.get("author_name")
-                or record.get("author_id")
-                or latest_state["author_name"]
-            )
+            latest_state["author_name"] = str(record.get("author_name") or record.get("author_id") or latest_state["author_name"])
             latest_state["author_id"] = record.get("author_id", latest_state["author_id"])
             latest_state["timestamp"] = str(record.get("timestamp") or latest_state["timestamp"])
             if event == "create":
@@ -310,9 +303,7 @@ class ArchiveRenderService:
             attachment_lines = ""
             attachments = message["attachments"]
             if attachments:
-                rendered_attachments = "".join(
-                    f"<li>{html.escape(str(item))}</li>" for item in attachments
-                )
+                rendered_attachments = "".join(f"<li>{html.escape(str(item))}</li>" for item in attachments)
                 attachment_lines = f"<ul>{rendered_attachments}</ul>"
 
             edit_records = edits_by_message_id.get(message.get("message_id"), [])
@@ -326,12 +317,7 @@ class ArchiveRenderService:
                     "</li>"
                     for record in edit_records
                 )
-                edit_lines = (
-                    "<section class='snapshot-annotation'>"
-                    "<h4>编辑快照</h4>"
-                    f"<ul>{rendered_edits}</ul>"
-                    "</section>"
-                )
+                edit_lines = f"<section class='snapshot-annotation'><h4>编辑快照</h4><ul>{rendered_edits}</ul></section>"
 
             rows.append(
                 "<article class='message'>"
@@ -354,20 +340,22 @@ class ArchiveRenderService:
                 attachment_lines = ""
                 attachments = deleted_message.get("attachments") or []
                 if attachments:
-                    attachment_lines = "<ul>" + "".join(
-                        f"<li>{html.escape(str(item))}</li>" for item in attachments
-                    ) + "</ul>"
+                    attachment_lines = "<ul>" + "".join(f"<li>{html.escape(str(item))}</li>" for item in attachments) + "</ul>"
                 timeline_lines = ""
                 edits = deleted_message.get("edits") or []
                 if edits:
-                    timeline_lines = "<ul>" + "".join(
-                        "<li>"
-                        f"{html.escape(str(edit.get('timestamp', 'unknown')))} | "
-                        f"{html.escape(str(edit.get('old_content', '') or '(empty)'))} -> "
-                        f"{html.escape(str(edit.get('new_content', '') or '(empty)'))}"
-                        "</li>"
-                        for edit in edits
-                    ) + "</ul>"
+                    timeline_lines = (
+                        "<ul>"
+                        + "".join(
+                            "<li>"
+                            f"{html.escape(str(edit.get('timestamp', 'unknown')))} | "
+                            f"{html.escape(str(edit.get('old_content', '') or '(empty)'))} -> "
+                            f"{html.escape(str(edit.get('new_content', '') or '(empty)'))}"
+                            "</li>"
+                            for edit in edits
+                        )
+                        + "</ul>"
+                    )
                 rendered_deleted.append(
                     "<article class='message deleted'>"
                     f"<div class='meta'><span class='author'>{html.escape(str(deleted_message.get('author_name', 'Unknown')))}</span> "
@@ -378,19 +366,12 @@ class ArchiveRenderService:
                     f"{timeline_lines}"
                     "</article>"
                 )
-            deleted_section = (
-                "<section class='deleted-messages'>"
-                "<h2>Deleted messages from snapshots</h2>"
-                f"{''.join(rendered_deleted)}"
-                "</section>"
-            )
+            deleted_section = f"<section class='deleted-messages'><h2>Deleted messages from snapshots</h2>{''.join(rendered_deleted)}</section>"
 
         rendered_notices = ""
         if notices:
             rendered_notices = (
-                "<section class='fallback-notice'>"
-                + "".join(f"<p>{html.escape(notice)}</p>" for notice in notices if notice)
-                + "</section>"
+                "<section class='fallback-notice'>" + "".join(f"<p>{html.escape(notice)}</p>" for notice in notices if notice) + "</section>"
             )
 
         rendered_extra_sections = "".join(section for section in (extra_sections or []) if section)
@@ -429,9 +410,7 @@ class ArchiveRenderService:
                 attachments = event.get("attachments") or event.get("new_attachments") or []
                 attachment_lines = ""
                 if attachments:
-                    attachment_lines = "<ul>" + "".join(
-                        f"<li>{html.escape(str(item))}</li>" for item in attachments
-                    ) + "</ul>"
+                    attachment_lines = "<ul>" + "".join(f"<li>{html.escape(str(item))}</li>" for item in attachments) + "</ul>"
                 if event_type == "edit":
                     rendered_events.append(
                         "<li>"
@@ -461,12 +440,7 @@ class ArchiveRenderService:
                 "</article>"
             )
 
-        return (
-            "<section class='timeline-section'>"
-            "<h2>Snapshot timeline</h2>"
-            f"{''.join(rendered_messages)}"
-            "</section>"
-        )
+        return f"<section class='timeline-section'><h2>Snapshot timeline</h2>{''.join(rendered_messages)}</section>"
 
     @staticmethod
     def _sort_message_records(records: list[dict[str, Any]]) -> tuple[str, int]:
@@ -496,11 +470,7 @@ class ArchiveRenderService:
     def _resolve_author_name(author: Any) -> str:
         if author is None:
             return "Unknown"
-        return str(
-            getattr(author, "display_name", None)
-            or getattr(author, "name", None)
-            or getattr(author, "id", "Unknown")
-        )
+        return str(getattr(author, "display_name", None) or getattr(author, "name", None) or getattr(author, "id", "Unknown"))
 
     @staticmethod
     def _format_timestamp(value: Any) -> str:

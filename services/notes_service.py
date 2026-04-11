@@ -88,11 +88,7 @@ class NotesService:
 
     @staticmethod
     def _resolve_author_name(actor: Any) -> str:
-        return str(
-            getattr(actor, "display_name", None)
-            or getattr(actor, "name", None)
-            or getattr(actor, "id", "Unknown")
-        )
+        return str(getattr(actor, "display_name", None) or getattr(actor, "name", None) or getattr(actor, "id", "Unknown"))
 
     @asynccontextmanager
     async def _acquire_notes_lock(self, ticket_id: str) -> AsyncIterator[None]:

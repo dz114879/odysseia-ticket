@@ -78,9 +78,7 @@ def test_setup_guild_creates_initialized_config_and_default_categories(
     assert result.config.timezone == "Asia/Hong_Kong"
     assert result.config.enable_download_window is False
     assert len(result.categories) == len(DEFAULT_TICKET_CATEGORY_TEMPLATES)
-    assert [category.category_key for category in result.categories] == [
-        template.category_key for template in DEFAULT_TICKET_CATEGORY_TEMPLATES
-    ]
+    assert [category.category_key for category in result.categories] == [template.category_key for template in DEFAULT_TICKET_CATEGORY_TEMPLATES]
 
 
 def test_setup_guild_keeps_existing_categories(

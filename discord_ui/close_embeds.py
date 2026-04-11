@@ -14,10 +14,7 @@ def build_close_request_embed(
 ) -> discord.Embed:
     embed = discord.Embed(
         title="📩 用户关闭请求",
-        description=(
-            f"<@{requester_id}> 请求关闭当前 ticket。\n"
-            "请由合法 staff 点击下方按钮同意或拒绝。"
-        ),
+        description=(f"<@{requester_id}> 请求关闭当前 ticket。\n请由合法 staff 点击下方按钮同意或拒绝。"),
         color=discord.Color.orange(),
     )
     embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)
@@ -57,8 +54,7 @@ def build_closing_notice_embed(
     embed = discord.Embed(
         title="🔒 Ticket 正在关闭中",
         description=(
-            "当前频道已进入关闭撤销窗口，期间会锁定所有非 Bot 用户发言。\n"
-            "若需撤销，请让合法 staff 在窗口结束前使用 `/ticket close-cancel`。"
+            "当前频道已进入关闭撤销窗口，期间会锁定所有非 Bot 用户发言。\n若需撤销，请让合法 staff 在窗口结束前使用 `/ticket close-cancel`。"
         ),
         color=discord.Color.red(),
     )

@@ -136,10 +136,13 @@ class StaffPanelService:
             embed=build_staff_control_panel_embed(ticket, category=category, config=config),
             view=self._build_panel_view(ticket),
         )
-        updated_ticket = self.ticket_repository.update(
-            ticket.ticket_id,
-            staff_panel_message_id=getattr(message, "id", None),
-        ) or ticket
+        updated_ticket = (
+            self.ticket_repository.update(
+                ticket.ticket_id,
+                staff_panel_message_id=getattr(message, "id", None),
+            )
+            or ticket
+        )
         return updated_ticket, message
 
     async def _resolve_channel(self, channel_id: int) -> Any:

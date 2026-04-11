@@ -90,16 +90,12 @@ def test_repositories_share_connection_for_multi_repository_unit_of_work(
             )
             == incremented_counter
         )
-        assert (
-            ticket_mute_repository.get_by_ticket_and_user(stored_ticket.ticket_id, 123, connection=connection)
-            == stored_mute
-        )
+        assert ticket_mute_repository.get_by_ticket_and_user(stored_ticket.ticket_id, 123, connection=connection) == stored_mute
 
     assert guild_repository.get_config(42) == stored_config
     assert ticket_repository.get_by_ticket_id("ticket-connection") == stored_ticket
     assert counter_repository.get_counter(42, "support") == incremented_counter
     assert ticket_mute_repository.get_by_ticket_and_user(stored_ticket.ticket_id, 123) == stored_mute
-
 
 
 def test_repositories_rollback_changes_when_outer_transaction_fails(

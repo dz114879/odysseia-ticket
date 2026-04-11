@@ -66,10 +66,13 @@ class DraftService:
                 )
 
             await channel.edit(name=new_name, reason=f"Rename draft ticket {ticket.ticket_id}")
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                updated_at=utc_now_iso(),
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    updated_at=utc_now_iso(),
+                )
+                or ticket
+            )
             return DraftRenameResult(
                 ticket=updated_ticket,
                 old_name=old_name,
@@ -87,10 +90,13 @@ class DraftService:
             ticket = self._require_draft_ticket(channel.id)
             self._assert_draft_owner(ticket, actor_id)
 
-            updated_ticket = self.ticket_repository.update(
-                ticket.ticket_id,
-                status=TicketStatus.ABANDONED,
-            ) or ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    ticket.ticket_id,
+                    status=TicketStatus.ABANDONED,
+                )
+                or ticket
+            )
             try:
                 await channel.delete(reason=f"Abandon draft ticket {ticket.ticket_id}")
             except Exception:

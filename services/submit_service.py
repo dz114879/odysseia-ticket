@@ -222,11 +222,14 @@ class SubmitService:
             requested_title=requested_title,
             from_queue=from_queue,
         )
-        updated_ticket = self.ticket_repository.update(
-            context.ticket.ticket_id,
-            status=TicketStatus.SUBMITTED,
-            queued_at=None,
-        ) or context.ticket
+        updated_ticket = (
+            self.ticket_repository.update(
+                context.ticket.ticket_id,
+                status=TicketStatus.SUBMITTED,
+                queued_at=None,
+            )
+            or context.ticket
+        )
         if self.snapshot_service is not None:
             bootstrap_result = await self.snapshot_service.bootstrap_from_channel_history(
                 updated_ticket,
@@ -245,10 +248,13 @@ class SubmitService:
             config=context.config,
         )
         if staff_panel_message is not None:
-            updated_ticket = self.ticket_repository.update(
-                updated_ticket.ticket_id,
-                staff_panel_message_id=getattr(staff_panel_message, "id", None),
-            ) or updated_ticket
+            updated_ticket = (
+                self.ticket_repository.update(
+                    updated_ticket.ticket_id,
+                    staff_panel_message_id=getattr(staff_panel_message, "id", None),
+                )
+                or updated_ticket
+            )
         resolved_welcome_message = welcome_message or await self._resolve_welcome_message(
             channel,
             ticket_id=updated_ticket.ticket_id,
@@ -284,11 +290,7 @@ class SubmitService:
 
         edit_kwargs: dict[str, object] = {
             "topic": self._build_channel_topic(context.ticket, status=TicketStatus.SUBMITTED),
-            "reason": (
-                f"Promote queued ticket {context.ticket.ticket_id}"
-                if from_queue
-                else f"Submit draft ticket {context.ticket.ticket_id}"
-            ),
+            "reason": (f"Promote queued ticket {context.ticket.ticket_id}" if from_queue else f"Submit draft ticket {context.ticket.ticket_id}"),
         }
         if next_name != current_name:
             edit_kwargs["name"] = next_name
@@ -422,6 +424,7 @@ class SubmitService:
             return self.queue_service.enqueue_ticket(ticket_id)
 
         from services.queue_service import QueueTicketResult
+
         queued_ticket = self.ticket_repository.update(
             ticket_id,
             status=TicketStatus.QUEUED,
