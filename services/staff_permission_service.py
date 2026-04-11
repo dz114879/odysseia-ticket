@@ -231,14 +231,14 @@ class StaffPermissionService:
                     )
                 )
 
-        for target in visible_targets:
-            updates.append(
-                StaffPermissionUpdate(
-                    target=target,
-                    overwrite=base_overwrite,
-                    reason=visible_reason,
-                )
+        updates.extend(
+            StaffPermissionUpdate(
+                target=target,
+                overwrite=base_overwrite,
+                reason=visible_reason,
             )
+            for target in visible_targets
+        )
 
         previous_claimer = self._resolve_member(guild, previous_claimer_id)
         if previous_claimer is not None and previous_claimer_id not in visible_target_ids:
@@ -420,10 +420,16 @@ class StaffPermissionService:
         except json.JSONDecodeError:
             return []
 
-        values: list[int] = []
-        for item in data if isinstance(data, list) else []:
-            try:
-                values.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return values
+        items = data if isinstance(data, list) else []
+        return [
+            value
+            for value in (StaffPermissionService._coerce_staff_user_id(item) for item in items)
+            if value is not None
+        ]
+
+    @staticmethod
+    def _coerce_staff_user_id(value: object) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None

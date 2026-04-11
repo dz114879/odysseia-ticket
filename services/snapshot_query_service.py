@@ -101,12 +101,12 @@ class SnapshotQueryService:
             edit_records = [record for record in timeline if str(record.get("event")) == "edit"]
             if edit_records:
                 lines.append("编辑历史：")
-                for edit_record in edit_records:
-                    lines.append(
-                        f"- {edit_record.get('timestamp', 'unknown')}: "
-                        f"{edit_record.get('old_content', '') or '(empty)'} -> "
-                        f"{edit_record.get('new_content', '') or '(empty)'}"
-                    )
+                lines.extend(
+                    f"- {edit_record.get('timestamp', 'unknown')}: "
+                    f"{edit_record.get('old_content', '') or '(empty)'} -> "
+                    f"{edit_record.get('new_content', '') or '(empty)'}"
+                    for edit_record in edit_records
+                )
             lines.append("")
         return "\n".join(lines).strip()
 

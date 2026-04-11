@@ -56,18 +56,22 @@ class RecoveryService:
         effective_reference_time = self._to_utc_datetime(reference_time)
         recoverable_tickets: list[tuple[TicketRecord, dict[str, Any]]] = []
 
-        for ticket in self.ticket_repository.list_due_close_executions(effective_reference_time.isoformat()):
-            recoverable_tickets.append((ticket, {"reference_time": effective_reference_time}))
+        recoverable_tickets.extend(
+            (ticket, {"reference_time": effective_reference_time})
+            for ticket in self.ticket_repository.list_due_close_executions(effective_reference_time.isoformat())
+        )
 
-        for ticket in self.ticket_repository.list_by_statuses(
-            [
-                TicketStatus.ARCHIVING,
-                TicketStatus.ARCHIVE_SENT,
-                TicketStatus.CHANNEL_DELETED,
-                TicketStatus.ARCHIVE_FAILED,
-            ]
-        ):
-            recoverable_tickets.append((ticket, {"reference_time": effective_reference_time}))
+        recoverable_tickets.extend(
+            (ticket, {"reference_time": effective_reference_time})
+            for ticket in self.ticket_repository.list_by_statuses(
+                [
+                    TicketStatus.ARCHIVING,
+                    TicketStatus.ARCHIVE_SENT,
+                    TicketStatus.CHANNEL_DELETED,
+                    TicketStatus.ARCHIVE_FAILED,
+                ]
+            )
+        )
 
         outcomes: list[ArchivePipelineResult | None] = []
         seen_ticket_ids: set[str] = set()

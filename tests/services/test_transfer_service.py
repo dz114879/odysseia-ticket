@@ -507,7 +507,6 @@ async def test_sweep_due_transfers_executes_transfer_updates_category_and_resets
     channel = prepared_transfer_context["channel"]
     bot = prepared_transfer_context["bot"]
     staff_member = prepared_transfer_context["staff_member"]
-    explicit_staff_member = prepared_transfer_context["explicit_staff_member"]
     billing_staff_member = prepared_transfer_context["billing_staff_member"]
     ticket_repository = prepared_transfer_context["ticket_repository"]
     staff_panel_service = FakeStaffPanelService()

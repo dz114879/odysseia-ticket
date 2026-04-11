@@ -536,11 +536,8 @@ class SnapshotService:
             return []
 
         history_result = history(limit=None, oldest_first=True)
-        messages: list[Any] = []
         if hasattr(history_result, "__aiter__"):
-            async for item in history_result:
-                messages.append(item)
-            return messages
+            return [item async for item in history_result]
         if inspect.isawaitable(history_result):
             history_result = await history_result
         return list(history_result or [])

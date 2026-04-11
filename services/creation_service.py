@@ -308,13 +308,19 @@ class CreationService:
         except json.JSONDecodeError:
             return []
 
-        values: list[int] = []
-        for item in data if isinstance(data, list) else []:
-            try:
-                values.append(int(item))
-            except (TypeError, ValueError):
-                continue
-        return values
+        items = data if isinstance(data, list) else []
+        return [
+            value
+            for value in (CreationService._coerce_staff_user_id(item) for item in items)
+            if value is not None
+        ]
+
+    @staticmethod
+    def _coerce_staff_user_id(value: object) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _slugify(value: str) -> str:

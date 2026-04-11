@@ -123,8 +123,7 @@ class ArchiveRenderService:
         history_result = history(limit=None, oldest_first=True)
         raw_messages: list[Any] = []
         if hasattr(history_result, "__aiter__"):
-            async for message in history_result:
-                raw_messages.append(message)
+            raw_messages.extend([message async for message in history_result])
         else:
             if inspect.isawaitable(history_result):
                 history_result = await history_result
