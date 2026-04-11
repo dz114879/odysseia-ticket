@@ -155,6 +155,9 @@ class SnapshotQueryService:
             "deleted_messages": deleted_sections,
         }
 
+    def get_archive_snapshot_records(self, ticket_id: str) -> list[dict[str, Any]]:
+        return self.snapshot_store.read_records(ticket_id)
+
     @staticmethod
     def _format_message_block(*, content_key: str, attachments_key: str, record: dict[str, Any]) -> str:
         lines = [f"内容：{record.get(content_key, '') or '(empty)'}"]

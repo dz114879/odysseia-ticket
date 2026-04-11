@@ -36,9 +36,11 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
     fake_logging_service = FakeLoggingService()
     create_mock = MagicMock(return_value=fake_logging_service)
     start_mock = AsyncMock()
+    recover_mock = AsyncMock(return_value=[])
 
     monkeypatch.setattr(bootstrap_module.LoggingService, "create", staticmethod(create_mock))
     monkeypatch.setattr(bootstrap_module.BackgroundScheduler, "start", start_mock)
+    monkeypatch.setattr(bootstrap_module.RecoveryService, "recover_incomplete_archive_flows", recover_mock)
     monkeypatch.setattr(bootstrap_module, "STORAGE_DIR", tmp_path / "storage")
     monkeypatch.setattr(
         bootstrap_module,
@@ -67,10 +69,11 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
         "ticket.draft_timeout_sweep",
         "ticket.transfer_execute_sweep",
         "ticket.mute_expire_sweep",
-        "ticket.close_archive_sweep",
+        "ticket.archive_recovery_sweep",
         "ticket.queue_sweep",
     ]
     assert (bootstrap_module.STORAGE_DIR / "snapshots").exists() is True
+    assert recover_mock.await_count == 1
     assert (bootstrap_module.STORAGE_DIR / "notes").exists() is True
     assert (bootstrap_module.STORAGE_DIR / "archives").exists() is True
     assert resources.draft_timeout_service is not None
@@ -80,6 +83,7 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
     assert resources.moderation_service is not None
     assert resources.transfer_service is not None
     assert resources.close_service is not None
+    assert resources.recovery_service is not None
     assert resources.snapshot_service is not None
     assert resources.snapshot_query_service is not None
     assert resources.notes_service is not None

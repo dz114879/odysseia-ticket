@@ -103,6 +103,17 @@ class TicketBot(commands.Bot):
             return
         await self.resources.snapshot_service.handle_raw_message_delete(payload)
 
+    async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel) -> None:
+        if self.resources is None:
+            return
+        recovery_service = getattr(self.resources, "recovery_service", None)
+        if recovery_service is None:
+            return
+        await recovery_service.handle_channel_deleted(
+            channel_id=getattr(channel, "id", None),
+            guild_id=getattr(getattr(channel, "guild", None), "id", None),
+        )
+
     async def _load_extensions(self) -> None:
         cogs_dir = BASE_DIR / "cogs"
         extension_names = sorted(

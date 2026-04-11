@@ -18,6 +18,9 @@ from services.archive_render_service import ArchiveRenderService
 from services.archive_service import ArchiveService
 from services.cleanup_service import CleanupService
 from services.close_service import CloseService
+from services.snapshot_query_service import SnapshotQueryService
+from storage.file_store import TicketFileStore
+from storage.snapshot_store import SnapshotStore
 
 
 @dataclass(frozen=True)
@@ -509,3 +512,96 @@ async def test_archive_service_keeps_archive_sent_when_channel_resolution_tempor
     assert outcome.channel_deleted is False
     assert stored is not None and stored.status is TicketStatus.ARCHIVE_SENT
     assert channel.deleted is False
+
+
+
+@pytest.mark.asyncio
+async def test_archive_service_uses_snapshot_fallback_when_source_channel_is_missing(
+    prepared_close_context,
+    tmp_path,
+) -> None:
+    database = prepared_close_context["database"]
+    ticket_repository = prepared_close_context["ticket_repository"]
+    archive_channel = prepared_close_context["archive_channel"]
+    ticket = prepared_close_context["ticket"]
+
+    snapshot_store = SnapshotStore(file_store=TicketFileStore(tmp_path))
+    snapshot_store.overwrite_records(
+        ticket.ticket_id,
+        [
+            {
+                "event": "create",
+                "message_id": 1,
+                "author_id": ticket.creator_id,
+                "author_name": "creator",
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "content": "fallback create",
+                "attachments": [],
+            },
+            {
+                "event": "edit",
+                "message_id": 1,
+                "author_id": ticket.creator_id,
+                "author_name": "creator",
+                "timestamp": "2024-01-01T00:01:00+00:00",
+                "old_content": "fallback create",
+                "new_content": "fallback edited",
+                "old_attachments": [],
+                "new_attachments": [],
+            },
+        ],
+    )
+
+    updated_ticket = ticket_repository.update(ticket.ticket_id, status=TicketStatus.ARCHIVING) or ticket
+    archive_service = ArchiveService(
+        database,
+        bot=FakeBot(archive_channel),
+        lock_manager=LockManager(),
+        render_service=ArchiveRenderService(
+            exports_dir=tmp_path / "exports",
+            snapshot_query_service=SnapshotQueryService(snapshot_store=snapshot_store),
+        ),
+        cleanup_service=CleanupService(database, storage_dir=tmp_path),
+    )
+
+    outcome = await archive_service.archive_ticket(updated_ticket.ticket_id)
+    stored = ticket_repository.get_by_ticket_id(updated_ticket.ticket_id)
+
+    assert outcome is not None
+    assert outcome.final_status is TicketStatus.DONE
+    assert archive_channel.sent_messages
+    assert stored is not None
+    assert stored.status is TicketStatus.DONE
+    assert stored.archive_last_error is None
+    assert stored.archive_message_id is not None
+
+
+@pytest.mark.asyncio
+async def test_archive_service_records_archive_failure_metadata_when_fallback_also_fails(
+    prepared_close_context,
+    tmp_path,
+) -> None:
+    database = prepared_close_context["database"]
+    ticket_repository = prepared_close_context["ticket_repository"]
+    archive_channel = prepared_close_context["archive_channel"]
+    ticket = prepared_close_context["ticket"]
+
+    ticket_repository.update(ticket.ticket_id, status=TicketStatus.ARCHIVING)
+    archive_service = ArchiveService(
+        database,
+        bot=FakeBot(archive_channel),
+        lock_manager=LockManager(),
+        render_service=ArchiveRenderService(exports_dir=tmp_path / "exports"),
+        cleanup_service=CleanupService(database, storage_dir=tmp_path),
+    )
+
+    outcome = await archive_service.archive_ticket(ticket.ticket_id)
+    stored = ticket_repository.get_by_ticket_id(ticket.ticket_id)
+
+    assert outcome is not None
+    assert outcome.final_status is TicketStatus.ARCHIVE_FAILED
+    assert stored is not None
+    assert stored.status is TicketStatus.ARCHIVE_FAILED
+    assert stored.archive_attempts == 1
+    assert stored.archive_last_error is not None
+    assert "fallback render failed" in stored.archive_last_error

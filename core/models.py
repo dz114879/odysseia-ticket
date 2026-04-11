@@ -32,6 +32,8 @@ class TicketRecord:
     close_execute_at: str | None = None
     closed_at: str | None = None
     archive_message_id: int | None = None
+    archive_last_error: str | None = None
+    archive_attempts: int = 0
     archived_at: str | None = None
     message_count: int | None = None
     snapshot_bootstrapped_at: str | None = None

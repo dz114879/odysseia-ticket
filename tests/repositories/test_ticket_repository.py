@@ -39,6 +39,8 @@ def make_ticket(
     close_execute_at: str | None = None,
     closed_at: str | None = None,
     archive_message_id: int | None = None,
+    archive_last_error: str | None = None,
+    archive_attempts: int = 0,
     archived_at: str | None = None,
     message_count: int | None = None,
     snapshot_bootstrapped_at: str | None = None,
@@ -70,6 +72,8 @@ def make_ticket(
         close_execute_at=close_execute_at,
         closed_at=closed_at,
         archive_message_id=archive_message_id,
+        archive_last_error=archive_last_error,
+        archive_attempts=archive_attempts,
         archived_at=archived_at,
         message_count=message_count,
         snapshot_bootstrapped_at=snapshot_bootstrapped_at,
@@ -100,6 +104,8 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             close_execute_at="2024-01-01T03:00:00+00:00",
             closed_at="2024-01-01T03:00:00+00:00",
             archive_message_id=7777,
+            archive_last_error="temporary send failure",
+            archive_attempts=2,
             archived_at="2024-01-01T03:02:00+00:00",
             message_count=42,
             snapshot_bootstrapped_at="2024-01-01T01:05:00+00:00",
@@ -129,6 +135,8 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.close_execute_at == "2024-01-01T03:00:00+00:00"
     assert loaded.closed_at == "2024-01-01T03:00:00+00:00"
     assert loaded.archive_message_id == 7777
+    assert loaded.archive_last_error == "temporary send failure"
+    assert loaded.archive_attempts == 2
     assert loaded.archived_at == "2024-01-01T03:02:00+00:00"
     assert loaded.message_count == 42
     assert loaded.snapshot_bootstrapped_at == "2024-01-01T01:05:00+00:00"
@@ -294,6 +302,8 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
             close_execute_at="2024-02-01T03:00:00+00:00",
             closed_at="2024-02-01T03:00:00+00:00",
             archive_message_id=9001,
+            archive_last_error="temporary network timeout",
+            archive_attempts=1,
             archived_at="2024-02-01T03:02:00+00:00",
             message_count=11,
             snapshot_bootstrapped_at="2024-02-01T01:30:00+00:00",
@@ -320,6 +330,8 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         close_execute_at=None,
         closed_at=None,
         archive_message_id=None,
+        archive_last_error=None,
+        archive_attempts=0,
         archived_at=None,
         message_count=None,
         snapshot_bootstrapped_at=None,
@@ -345,6 +357,8 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert upserted.close_execute_at == "2024-02-01T03:00:00+00:00"
     assert upserted.closed_at == "2024-02-01T03:00:00+00:00"
     assert upserted.archive_message_id == 9001
+    assert upserted.archive_last_error == "temporary network timeout"
+    assert upserted.archive_attempts == 1
     assert upserted.archived_at == "2024-02-01T03:02:00+00:00"
     assert upserted.message_count == 11
     assert upserted.snapshot_bootstrapped_at == "2024-02-01T01:30:00+00:00"
@@ -370,6 +384,8 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.close_execute_at is None
     assert updated.closed_at is None
     assert updated.archive_message_id is None
+    assert updated.archive_last_error is None
+    assert updated.archive_attempts == 0
     assert updated.archived_at is None
     assert updated.message_count is None
     assert updated.snapshot_bootstrapped_at is None

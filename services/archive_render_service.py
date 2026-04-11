@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import html
 import inspect
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from config.static import STORAGE_DIR
+from core.errors import ValidationError
 from core.models import TicketRecord
 from services.snapshot_query_service import SnapshotQueryService
 
@@ -17,6 +19,9 @@ class ArchiveRenderResult:
     transcript_path: Path
     transcript_filename: str
     message_count: int
+    render_mode: str = "live"
+    source_message_count: int | None = None
+    diagnostics: dict[str, Any] | None = None
 
 
 class ArchiveRenderService:
@@ -36,21 +41,78 @@ class ArchiveRenderService:
         ticket: TicketRecord,
         channel: Any,
     ) -> ArchiveRenderResult:
+        return await self.render_live_transcript(ticket=ticket, channel=channel)
+
+    async def render_live_transcript(
+        self,
+        *,
+        ticket: TicketRecord,
+        channel: Any,
+    ) -> ArchiveRenderResult:
         messages = await self._collect_messages(channel)
-        annotations = (
-            self.snapshot_query_service.build_archive_annotations(ticket.ticket_id)
-            if self.snapshot_query_service is not None
-            else {"edits_by_message_id": {}, "deleted_messages": []}
-        )
-        transcript_path = self.exports_dir / f"{ticket.ticket_id}.html"
-        transcript_path.write_text(
-            self._build_html(ticket, messages, annotations=annotations),
-            encoding="utf-8",
+        annotations = self._build_annotations(ticket.ticket_id)
+        transcript_path = self._write_transcript(
+            ticket.ticket_id,
+            self._build_html(
+                ticket,
+                messages,
+                annotations=annotations,
+                render_mode="live",
+                rendered_message_count=len(messages),
+            ),
         )
         return ArchiveRenderResult(
             transcript_path=transcript_path,
             transcript_filename=f"{ticket.ticket_id}-transcript.html",
             message_count=len(messages),
+            render_mode="live",
+            source_message_count=len(messages),
+            diagnostics={"annotation_deleted_count": len(annotations.get("deleted_messages", []))},
+        )
+
+    async def render_fallback_transcript(
+        self,
+        *,
+        ticket: TicketRecord,
+    ) -> ArchiveRenderResult:
+        if self.snapshot_query_service is None:
+            raise ValidationError("未配置 snapshot_query_service，无法生成 fallback transcript。")
+
+        records = self.snapshot_query_service.get_archive_snapshot_records(ticket.ticket_id)
+        if not records:
+            raise ValidationError("当前 ticket 没有可用 snapshots，无法生成 fallback transcript。")
+
+        payload = self._build_fallback_payload(records)
+        annotations = self._build_annotations(ticket.ticket_id)
+        transcript_path = self._write_transcript(
+            ticket.ticket_id,
+            self._build_html(
+                ticket,
+                payload["visible_messages"],
+                annotations=annotations,
+                render_mode="fallback",
+                rendered_message_count=int(payload["visible_message_count"]),
+                notices=[
+                    "本归档由 snapshots fallback 生成；live channel history 不可用或渲染失败。",
+                    (
+                        f"快照记录数：{payload['record_count']}，"
+                        f"可恢复消息数：{payload['visible_message_count']}，"
+                        f"已删除消息数：{payload['deleted_message_count']}。"
+                    ),
+                ],
+                extra_sections=[self._build_fallback_timeline_section(payload["timeline_sections"])],
+            ),
+        )
+        return ArchiveRenderResult(
+            transcript_path=transcript_path,
+            transcript_filename=f"{ticket.ticket_id}-transcript.html",
+            message_count=int(payload["visible_message_count"]),
+            render_mode="fallback",
+            source_message_count=int(payload["record_count"]),
+            diagnostics={
+                "deleted_message_count": int(payload["deleted_message_count"]),
+                "timeline_message_count": len(payload["timeline_sections"]),
+            },
         )
 
     async def _collect_messages(self, channel: Any) -> list[dict[str, object]]:
@@ -87,12 +149,148 @@ class ArchiveRenderService:
             )
         return normalized_messages
 
+    def _build_annotations(self, ticket_id: str) -> dict[str, Any]:
+        if self.snapshot_query_service is None:
+            return {"edits_by_message_id": {}, "deleted_messages": []}
+        return self.snapshot_query_service.build_archive_annotations(ticket_id)
+
+    def _write_transcript(self, ticket_id: str, content: str) -> Path:
+        transcript_path = self.exports_dir / f"{ticket_id}.html"
+        transcript_path.write_text(content, encoding="utf-8")
+        return transcript_path
+
+    def _build_fallback_payload(self, records: list[dict[str, Any]]) -> dict[str, Any]:
+        grouped_records: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for record in records:
+            message_id = self._coerce_message_id(record.get("message_id"))
+            if message_id is None:
+                continue
+            grouped_records[message_id].append(record)
+
+        timeline_sections: list[dict[str, Any]] = []
+        visible_messages: list[dict[str, Any]] = []
+        deleted_count = 0
+
+        for message_id, message_records in sorted(
+            grouped_records.items(),
+            key=lambda item: self._sort_message_records(item[1]),
+        ):
+            timeline_records = sorted(
+                message_records,
+                key=lambda record: self._timeline_sort_key(record.get("timestamp")),
+            )
+            latest_state = self._derive_latest_snapshot_state(message_id, timeline_records)
+            timeline_sections.append(
+                {
+                    "message_id": message_id,
+                    "author_name": latest_state["author_name"],
+                    "author_id": latest_state["author_id"],
+                    "events": [self._normalize_timeline_event(record) for record in timeline_records],
+                    "deleted": latest_state["deleted"],
+                }
+            )
+            if latest_state["deleted"]:
+                deleted_count += 1
+                continue
+            visible_messages.append(
+                {
+                    "message_id": message_id,
+                    "author_name": latest_state["author_name"],
+                    "author_id": latest_state["author_id"],
+                    "created_at": latest_state["timestamp"],
+                    "content": latest_state["content"],
+                    "attachments": latest_state["attachments"],
+                }
+            )
+
+        return {
+            "record_count": len(records),
+            "visible_message_count": len(visible_messages),
+            "deleted_message_count": deleted_count,
+            "visible_messages": visible_messages,
+            "timeline_sections": timeline_sections,
+        }
+
+    @staticmethod
+    def _derive_latest_snapshot_state(
+        message_id: int,
+        timeline_records: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        latest_state = {
+            "message_id": message_id,
+            "author_name": "Unknown",
+            "author_id": None,
+            "timestamp": "unknown",
+            "content": "",
+            "attachments": [],
+            "deleted": False,
+        }
+        for record in timeline_records:
+            event = str(record.get("event", "unknown"))
+            latest_state["author_name"] = str(
+                record.get("author_name")
+                or record.get("author_id")
+                or latest_state["author_name"]
+            )
+            latest_state["author_id"] = record.get("author_id", latest_state["author_id"])
+            latest_state["timestamp"] = str(record.get("timestamp") or latest_state["timestamp"])
+            if event == "create":
+                latest_state["content"] = str(record.get("content", "") or "")
+                latest_state["attachments"] = list(record.get("attachments") or [])
+                latest_state["deleted"] = False
+            elif event == "edit":
+                latest_state["content"] = str(record.get("new_content", "") or "")
+                latest_state["attachments"] = list(record.get("new_attachments") or [])
+                latest_state["deleted"] = False
+            elif event == "delete":
+                latest_state["content"] = str(record.get("deleted_content", "") or latest_state["content"])
+                latest_state["attachments"] = list(record.get("deleted_attachments") or latest_state["attachments"])
+                latest_state["deleted"] = True
+        return latest_state
+
+    @staticmethod
+    def _normalize_timeline_event(record: dict[str, Any]) -> dict[str, Any]:
+        event = str(record.get("event", "unknown"))
+        if event == "create":
+            return {
+                "event": "create",
+                "timestamp": str(record.get("timestamp") or "unknown"),
+                "content": str(record.get("content", "") or ""),
+                "attachments": list(record.get("attachments") or []),
+            }
+        if event == "edit":
+            return {
+                "event": "edit",
+                "timestamp": str(record.get("timestamp") or "unknown"),
+                "old_content": str(record.get("old_content", "") or ""),
+                "new_content": str(record.get("new_content", "") or ""),
+                "old_attachments": list(record.get("old_attachments") or []),
+                "new_attachments": list(record.get("new_attachments") or []),
+            }
+        if event == "delete":
+            return {
+                "event": "delete",
+                "timestamp": str(record.get("timestamp") or "unknown"),
+                "content": str(record.get("deleted_content", "") or ""),
+                "attachments": list(record.get("deleted_attachments") or []),
+            }
+        return {
+            "event": event,
+            "timestamp": str(record.get("timestamp") or "unknown"),
+            "content": str(record.get("content", "") or ""),
+            "attachments": list(record.get("attachments") or []),
+        }
+
     @staticmethod
     def _build_html(
         ticket: TicketRecord,
         messages: list[dict[str, object]],
         *,
         annotations: dict[str, Any],
+        render_mode: str,
+        rendered_message_count: int,
+        notices: list[str] | None = None,
+        extra_sections: list[str] | None = None,
     ) -> str:
         header = (
             f"<h1>Transcript for {html.escape(ticket.ticket_id)}</h1>"
@@ -100,7 +298,8 @@ class ArchiveRenderService:
             f"<p><strong>Category:</strong> {html.escape(ticket.category_key)}</p>"
             f"<p><strong>Closed At:</strong> {html.escape(ticket.closed_at or 'unknown')}</p>"
             f"<p><strong>Close Reason:</strong> {html.escape(ticket.close_reason or 'not provided')}</p>"
-            f"<p><strong>Message Count:</strong> {len(messages)}</p>"
+            f"<p><strong>Render Mode:</strong> {html.escape(render_mode)}</p>"
+            f"<p><strong>Message Count:</strong> {rendered_message_count}</p>"
         )
 
         edits_by_message_id = annotations.get("edits_by_message_id", {}) if isinstance(annotations, dict) else {}
@@ -186,6 +385,16 @@ class ArchiveRenderService:
                 "</section>"
             )
 
+        rendered_notices = ""
+        if notices:
+            rendered_notices = (
+                "<section class='fallback-notice'>"
+                + "".join(f"<p>{html.escape(notice)}</p>" for notice in notices if notice)
+                + "</section>"
+            )
+
+        rendered_extra_sections = "".join(section for section in (extra_sections or []) if section)
+
         return (
             "<!DOCTYPE html>"
             "<html lang='en'><head><meta charset='utf-8'>"
@@ -195,12 +404,93 @@ class ArchiveRenderService:
             ".message.deleted{border-color:#7c2d12;background:#2b1d1b;}"
             ".meta{color:#9ca3af;font-size:12px;margin-bottom:8px;}pre{white-space:pre-wrap;word-break:break-word;}"
             ".snapshot-annotation{margin-top:12px;padding:8px;border-top:1px dashed #4b5563;color:#d1d5db;}"
-            ".deleted-messages{margin-top:32px;}a{color:#60a5fa;}</style></head><body>"
+            ".deleted-messages,.timeline-section{margin-top:32px;}"
+            ".fallback-notice{margin:20px 0;padding:16px;border:1px solid #92400e;border-radius:8px;background:#3f2b12;color:#fde68a;}"
+            ".timeline-message{border-left:3px solid #4b5563;padding-left:12px;margin:16px 0;}"
+            "a{color:#60a5fa;}</style></head><body>"
             f"{header}"
+            f"{rendered_notices}"
             f"{''.join(rows)}"
             f"{deleted_section}"
+            f"{rendered_extra_sections}"
             "</body></html>"
         )
+
+    @staticmethod
+    def _build_fallback_timeline_section(timeline_sections: list[dict[str, Any]]) -> str:
+        if not timeline_sections:
+            return ""
+
+        rendered_messages: list[str] = []
+        for section in timeline_sections:
+            rendered_events: list[str] = []
+            for event in section.get("events", []):
+                event_type = str(event.get("event", "unknown"))
+                attachments = event.get("attachments") or event.get("new_attachments") or []
+                attachment_lines = ""
+                if attachments:
+                    attachment_lines = "<ul>" + "".join(
+                        f"<li>{html.escape(str(item))}</li>" for item in attachments
+                    ) + "</ul>"
+                if event_type == "edit":
+                    rendered_events.append(
+                        "<li>"
+                        f"<strong>{html.escape(str(event.get('timestamp', 'unknown')))}</strong> "
+                        "[edit]"
+                        f"<div>old: {html.escape(str(event.get('old_content', '') or '(empty)'))}</div>"
+                        f"<div>new: {html.escape(str(event.get('new_content', '') or '(empty)'))}</div>"
+                        "</li>"
+                    )
+                    continue
+                rendered_events.append(
+                    "<li>"
+                    f"<strong>{html.escape(str(event.get('timestamp', 'unknown')))}</strong> "
+                    f"[{html.escape(event_type)}]"
+                    f"<div>{html.escape(str(event.get('content', '') or '(empty)'))}</div>"
+                    f"{attachment_lines}"
+                    "</li>"
+                )
+
+            rendered_messages.append(
+                "<article class='timeline-message'>"
+                f"<h3>Message {html.escape(str(section.get('message_id', 'unknown')))}</h3>"
+                f"<p>{html.escape(str(section.get('author_name', 'Unknown')))} "
+                f"({html.escape(str(section.get('author_id') or 'unknown'))})</p>"
+                f"<p><strong>Deleted:</strong> {html.escape(str(section.get('deleted', False)))}</p>"
+                f"<ul>{''.join(rendered_events)}</ul>"
+                "</article>"
+            )
+
+        return (
+            "<section class='timeline-section'>"
+            "<h2>Snapshot timeline</h2>"
+            f"{''.join(rendered_messages)}"
+            "</section>"
+        )
+
+    @staticmethod
+    def _sort_message_records(records: list[dict[str, Any]]) -> tuple[str, int]:
+        first_timestamp = min(
+            (ArchiveRenderService._timeline_sort_key(record.get("timestamp")) for record in records),
+            default="",
+        )
+        first_message_id = ArchiveRenderService._coerce_message_id(records[0].get("message_id")) or 0
+        return first_timestamp, first_message_id
+
+    @staticmethod
+    def _timeline_sort_key(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, datetime):
+            return value.isoformat()
+        return str(value)
+
+    @staticmethod
+    def _coerce_message_id(value: Any) -> int | None:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _resolve_author_name(author: Any) -> str:

@@ -254,6 +254,24 @@ async def test_on_raw_message_edit_routes_to_snapshot_service(make_settings) -> 
 
 
 @pytest.mark.asyncio
+async def test_on_guild_channel_delete_routes_to_recovery_service(make_settings) -> None:
+    bot = TicketBot(make_settings())
+    recovery_service = SimpleNamespace(handle_channel_deleted=AsyncMock())
+    bot.resources = SimpleNamespace(recovery_service=recovery_service)
+    channel = SimpleNamespace(id=9001, guild=SimpleNamespace(id=123))
+
+    try:
+        await bot.on_guild_channel_delete(channel)
+        recovery_service.handle_channel_deleted.assert_awaited_once_with(
+            channel_id=9001,
+            guild_id=123,
+        )
+    finally:
+        bot.resources = None
+        await bot.close()
+
+
+@pytest.mark.asyncio
 async def test_on_raw_message_delete_routes_to_snapshot_service(make_settings) -> None:
     bot = TicketBot(make_settings())
     snapshot_service = SimpleNamespace(handle_raw_message_delete=AsyncMock())

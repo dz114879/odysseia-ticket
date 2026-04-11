@@ -24,6 +24,7 @@ from services.logging_service import LoggingService
 from services.moderation_service import ModerationService
 from services.notes_service import NotesService
 from services.queue_service import QueueService
+from services.recovery_service import RecoveryService
 from services.sleep_service import SleepService
 from services.snapshot_query_service import SnapshotQueryService
 from services.snapshot_service import SnapshotService
@@ -52,6 +53,7 @@ class BootstrapResources:
     moderation_service: ModerationService
     transfer_service: TransferService
     close_service: CloseService
+    recovery_service: RecoveryService
     snapshot_service: SnapshotService
     snapshot_query_service: SnapshotQueryService
     notes_service: NotesService
@@ -77,6 +79,7 @@ class BootstrapService:
         self.moderation_service: ModerationService | None = None
         self.transfer_service: TransferService | None = None
         self.close_service: CloseService | None = None
+        self.recovery_service: RecoveryService | None = None
         self.snapshot_service: SnapshotService | None = None
         self.snapshot_query_service: SnapshotQueryService | None = None
         self.notes_service: NotesService | None = None
@@ -188,6 +191,7 @@ class BootstrapService:
                 storage_dir=STORAGE_DIR,
                 cache=self.cache,
             ),
+            logging_service=self.logging_service,
             capacity_service=self.capacity_service,
             queue_service=self.queue_service,
             logger=self.logging_service.child("archive"),
@@ -202,6 +206,19 @@ class BootstrapService:
             queue_service=self.queue_service,
             logger=self.logging_service.child("close"),
         )
+        self.recovery_service = RecoveryService(
+            self.database,
+            archive_service=archive_service,
+            logging_service=self.logging_service,
+            logger=self.logging_service.child("recovery"),
+        )
+
+        recovery_outcomes = await self.recovery_service.recover_incomplete_archive_flows()
+        if recovery_outcomes:
+            self.logging_service.log_local_info(
+                "Recovered %s incomplete archive flow(s) during bootstrap.",
+                len(recovery_outcomes),
+            )
 
         self.scheduler = BackgroundScheduler(
             interval_seconds=self.settings.scheduler_interval_seconds,
@@ -226,8 +243,8 @@ class BootstrapService:
             self._run_mute_expire_sweep,
         )
         self.scheduler.register_handler(
-            "ticket.close_archive_sweep",
-            self._run_close_archive_sweep,
+            "ticket.archive_recovery_sweep",
+            self._run_archive_recovery_sweep,
         )
         self.scheduler.register_handler(
             "ticket.queue_sweep",
@@ -252,6 +269,7 @@ class BootstrapService:
             moderation_service=self.moderation_service,
             transfer_service=self.transfer_service,
             close_service=self.close_service,
+            recovery_service=self.recovery_service,
             snapshot_service=self.snapshot_service,
             snapshot_query_service=self.snapshot_query_service,
             notes_service=self.notes_service,
@@ -349,14 +367,14 @@ class BootstrapService:
                 len(outcomes),
             )
 
-    async def _run_close_archive_sweep(self) -> None:
-        if self.close_service is None or self.logging_service is None:
+    async def _run_archive_recovery_sweep(self) -> None:
+        if self.recovery_service is None or self.logging_service is None:
             return
 
-        outcomes = await self.close_service.sweep_due_closing_tickets()
+        outcomes = await self.recovery_service.sweep_recoverable_tickets()
         if outcomes:
             self.logging_service.log_local_info(
-                "Processed %s ticket close/archive flow(s).",
+                "Processed %s ticket archive recovery flow(s).",
                 len(outcomes),
             )
 

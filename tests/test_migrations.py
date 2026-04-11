@@ -61,6 +61,8 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert "archived_at" in ticket_column_names
     assert "message_count" in ticket_column_names
     assert "snapshot_bootstrapped_at" in ticket_column_names
+    assert "archive_last_error" in ticket_column_names
+    assert "archive_attempts" in ticket_column_names
     assert "queued_at" in ticket_column_names
 
 

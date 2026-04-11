@@ -119,4 +119,59 @@ async def test_archive_render_service_injects_edit_and_delete_snapshot_annotatio
     assert "被删除的消息" in html
     assert "2024-01-01T02:34:56+00:00" in html
     assert "2024-01-01T00:02:00+00:00" not in html
+    assert result.render_mode == "live"
     assert result.message_count == 1
+
+
+@pytest.mark.asyncio
+async def test_archive_render_service_can_render_snapshot_only_fallback_transcript(tmp_path) -> None:
+    snapshot_store = SnapshotStore(file_store=TicketFileStore(tmp_path))
+    snapshot_store.overwrite_records(
+        "ticket-fallback",
+        [
+            {
+                "event": "create",
+                "message_id": 10,
+                "author_id": 201,
+                "author_name": "creator",
+                "timestamp": "2024-01-01T00:00:00+00:00",
+                "content": "初始内容",
+                "attachments": [],
+            },
+            {
+                "event": "edit",
+                "message_id": 10,
+                "author_id": 201,
+                "author_name": "creator",
+                "timestamp": "2024-01-01T00:01:00+00:00",
+                "old_content": "初始内容",
+                "new_content": "编辑后的内容",
+                "old_attachments": [],
+                "new_attachments": ["trace.txt"],
+            },
+            {
+                "event": "delete",
+                "message_id": 11,
+                "author_id": 301,
+                "author_name": "staff",
+                "timestamp": "2024-01-01T00:02:00+00:00",
+                "deleted_content": "已删除的提示",
+                "deleted_attachments": [],
+            },
+        ],
+    )
+    render_service = ArchiveRenderService(
+        exports_dir=tmp_path / "exports",
+        snapshot_query_service=SnapshotQueryService(snapshot_store=snapshot_store),
+    )
+    ticket = TicketRecord(ticket_id="ticket-fallback", guild_id=1, creator_id=201, category_key="support")
+
+    result = await render_service.render_fallback_transcript(ticket=ticket)
+    html = result.transcript_path.read_text(encoding="utf-8")
+
+    assert result.render_mode == "fallback"
+    assert result.message_count == 1
+    assert "snapshots fallback" in html
+    assert "Snapshot timeline" in html
+    assert "编辑后的内容" in html
+    assert "已删除的提示" in html

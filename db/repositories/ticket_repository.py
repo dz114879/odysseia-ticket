@@ -47,6 +47,8 @@ class TicketRepository(BaseRepository):
             close_execute_at=row["close_execute_at"],
             closed_at=row["closed_at"],
             archive_message_id=row["archive_message_id"],
+            archive_last_error=row["archive_last_error"],
+            archive_attempts=row["archive_attempts"],
             archived_at=row["archived_at"],
             message_count=row["message_count"],
             snapshot_bootstrapped_at=row["snapshot_bootstrapped_at"],
@@ -91,12 +93,14 @@ class TicketRepository(BaseRepository):
                     close_execute_at,
                     closed_at,
                     archive_message_id,
+                    archive_last_error,
+                    archive_attempts,
                     archived_at,
                     message_count,
                     snapshot_bootstrapped_at,
                     queued_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -124,6 +128,8 @@ class TicketRepository(BaseRepository):
                     record.close_execute_at,
                     record.closed_at,
                     record.archive_message_id,
+                    record.archive_last_error,
+                    record.archive_attempts,
                     record.archived_at,
                     record.message_count,
                     record.snapshot_bootstrapped_at,
@@ -156,6 +162,8 @@ class TicketRepository(BaseRepository):
             close_execute_at=record.close_execute_at,
             closed_at=record.closed_at,
             archive_message_id=record.archive_message_id,
+            archive_last_error=record.archive_last_error,
+            archive_attempts=record.archive_attempts,
             archived_at=record.archived_at,
             message_count=record.message_count,
             snapshot_bootstrapped_at=record.snapshot_bootstrapped_at,
@@ -200,12 +208,14 @@ class TicketRepository(BaseRepository):
                     close_execute_at,
                     closed_at,
                     archive_message_id,
+                    archive_last_error,
+                    archive_attempts,
                     archived_at,
                     message_count,
                     snapshot_bootstrapped_at,
                     queued_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -230,6 +240,8 @@ class TicketRepository(BaseRepository):
                     close_execute_at = excluded.close_execute_at,
                     closed_at = excluded.closed_at,
                     archive_message_id = excluded.archive_message_id,
+                    archive_last_error = excluded.archive_last_error,
+                    archive_attempts = excluded.archive_attempts,
                     archived_at = excluded.archived_at,
                     message_count = excluded.message_count,
                     snapshot_bootstrapped_at = excluded.snapshot_bootstrapped_at,
@@ -261,6 +273,8 @@ class TicketRepository(BaseRepository):
                     record.close_execute_at,
                     record.closed_at,
                     record.archive_message_id,
+                    record.archive_last_error,
+                    record.archive_attempts,
                     record.archived_at,
                     record.message_count,
                     record.snapshot_bootstrapped_at,
@@ -293,6 +307,8 @@ class TicketRepository(BaseRepository):
             close_execute_at=record.close_execute_at,
             closed_at=record.closed_at,
             archive_message_id=record.archive_message_id,
+            archive_last_error=record.archive_last_error,
+            archive_attempts=record.archive_attempts,
             archived_at=record.archived_at,
             message_count=record.message_count,
             snapshot_bootstrapped_at=record.snapshot_bootstrapped_at,
@@ -456,6 +472,8 @@ class TicketRepository(BaseRepository):
         close_execute_at: str | None | object = UNSET,
         closed_at: str | None | object = UNSET,
         archive_message_id: int | None | object = UNSET,
+        archive_last_error: str | None | object = UNSET,
+        archive_attempts: int | object = UNSET,
         archived_at: str | None | object = UNSET,
         message_count: int | None | object = UNSET,
         snapshot_bootstrapped_at: str | None | object = UNSET,
@@ -512,6 +530,10 @@ class TicketRepository(BaseRepository):
             updates["closed_at"] = closed_at
         if archive_message_id is not UNSET:
             updates["archive_message_id"] = archive_message_id
+        if archive_last_error is not UNSET:
+            updates["archive_last_error"] = archive_last_error
+        if archive_attempts is not UNSET:
+            updates["archive_attempts"] = archive_attempts
         if archived_at is not UNSET:
             updates["archived_at"] = archived_at
         if message_count is not UNSET:

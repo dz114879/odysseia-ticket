@@ -222,6 +222,12 @@ _MIGRATION_V9_STATEMENTS = (
 )
 
 
+_MIGRATION_V10_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN archive_last_error TEXT;",
+    "ALTER TABLE tickets ADD COLUMN archive_attempts INTEGER NOT NULL DEFAULT 0;",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
@@ -256,6 +262,10 @@ def _migration_v8_add_snapshot_bootstrap_tracking(connection: sqlite3.Connection
 
 def _migration_v9_add_queue_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V9_STATEMENTS)
+
+
+def _migration_v10_add_archive_failure_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V10_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -311,6 +321,11 @@ MIGRATIONS = [
         version=9,
         name="add_queue_tracking",
         operation=_migration_v9_add_queue_tracking,
+    ),
+    Migration(
+        version=10,
+        name="add_archive_failure_tracking",
+        operation=_migration_v10_add_archive_failure_tracking,
     ),
 ]
 
