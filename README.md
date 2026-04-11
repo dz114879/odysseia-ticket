@@ -130,6 +130,6 @@ Ruff 配置：行宽 150，规则集 E / F / B (Bugbear) / PERF / UP (pyupgrade)
 - **ruff** — 代码检查与格式化
 - **uv** — 包管理与运行
 
-## 许可证
+## License
 
-私有项目，未公开授权。
+This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE) file for details.
