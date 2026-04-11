@@ -1,3 +1,8 @@
+[project]
+name = "odysseia-ticket"
+version = "0.1.0"
+license = { text = "AGPL-3.0" }
+
 [tool.ruff]
 # 将行宽设置为 120
 line-length = 150
