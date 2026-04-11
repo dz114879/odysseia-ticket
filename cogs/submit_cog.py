@@ -37,7 +37,7 @@ class SubmitCog(commands.Cog):
 
         if not getattr(bot, "_draft_welcome_view_registered", False):
             bot.add_view(DraftWelcomeView())
-            setattr(bot, "_draft_welcome_view_registered", True)
+            bot._draft_welcome_view_registered = True
 
     @ticket_group.command(name="submit", description="提交当前 draft ticket 给 staff 处理")
     @app_commands.guild_only()

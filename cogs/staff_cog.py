@@ -82,7 +82,7 @@ class StaffCog(commands.Cog):
 
         if not getattr(bot, "_staff_panel_view_registered", False):
             bot.add_view(StaffPanelView())
-            setattr(bot, "_staff_panel_view_registered", True)
+            bot._staff_panel_view_registered = True
 
     @ticket_group.command(name="claim", description="认领当前 submitted ticket")
     @app_commands.guild_only()

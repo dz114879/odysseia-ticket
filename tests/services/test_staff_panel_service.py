@@ -20,7 +20,7 @@ class FakeMessage:
     def __init__(
         self,
         message_id: int,
-        channel: "FakeChannel",
+        channel: FakeChannel,
         *,
         embed: discord.Embed | None = None,
         view=None,

@@ -4,7 +4,8 @@ import inspect
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.constants import SNAPSHOT_CREATE_LIMIT, SNAPSHOT_CREATE_WARNING_THRESHOLD
 from core.enums import TicketStatus

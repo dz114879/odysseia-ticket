@@ -5,7 +5,8 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.constants import TRANSFER_EXECUTION_DELAY_SECONDS
 from core.enums import TicketStatus

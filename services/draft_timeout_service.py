@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.constants import DRAFT_ABANDON_TIMEOUT_HOURS, DRAFT_INACTIVE_CLOSE_HOURS
 from core.enums import TicketStatus

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.enums import ClaimMode, TicketStatus
 from core.errors import (
-    InvalidTicketStateError,
     PermissionDeniedError,
-    TicketNotFoundError,
     ValidationError,
 )
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord

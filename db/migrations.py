@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 from core.constants import CURRENT_SCHEMA_VERSION, SCHEMA_VERSION_TABLE
 from core.errors import DatabaseMigrationError

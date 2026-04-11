@@ -45,7 +45,7 @@ class FakeUser:
 
 
 class FakeMessage:
-    def __init__(self, message_id: int, channel: "FakeChannel", *, embed, view) -> None:
+    def __init__(self, message_id: int, channel: FakeChannel, *, embed, view) -> None:
         self.id = message_id
         self.channel = channel
         self.embed = embed
@@ -62,7 +62,7 @@ class FakeMessage:
 
 
 class FakeChannel:
-    def __init__(self, channel_id: int, guild: "FakeGuild") -> None:
+    def __init__(self, channel_id: int, guild: FakeGuild) -> None:
         self.id = channel_id
         self.guild = guild
         self.messages: dict[int, FakeMessage] = {}

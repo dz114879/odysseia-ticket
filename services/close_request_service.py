@@ -6,10 +6,8 @@ from typing import Any
 from core.constants import CLOSE_REQUEST_TIMEOUT_SECONDS
 from core.enums import TicketStatus
 from core.errors import (
-    InvalidTicketStateError,
     PermissionDeniedError,
     StaleInteractionError,
-    TicketNotFoundError,
     ValidationError,
 )
 from core.models import TicketRecord

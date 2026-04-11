@@ -4,7 +4,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from time import monotonic
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 
 @dataclass(slots=True)

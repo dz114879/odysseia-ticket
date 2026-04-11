@@ -12,7 +12,6 @@ from db.repositories.ticket_repository import TicketRepository
 from runtime.cache import RuntimeCacheStore
 from runtime.locks import LockManager
 import services.snapshot_service as snapshot_service_module
-from services.logging_service import LoggingService
 from services.snapshot_service import SnapshotService
 from storage.file_store import TicketFileStore
 from storage.snapshot_store import SnapshotStore
@@ -40,7 +39,7 @@ class FakeAttachment:
 class FakeMessage:
     id: int
     author: FakeAuthor
-    channel: "FakeChannel"
+    channel: FakeChannel
     content: str
     created_at: datetime
     attachments: list[FakeAttachment] = field(default_factory=list)

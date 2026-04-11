@@ -4,12 +4,13 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.constants import CLOSE_REVOKE_WINDOW_SECONDS
 from core.enums import TicketStatus
 from core.errors import InvalidTicketStateError, TicketNotFoundError, ValidationError
-from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
+from core.models import TicketRecord
 from db.connection import DatabaseManager
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_mute_repository import TicketMuteRepository

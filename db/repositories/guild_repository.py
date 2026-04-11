@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import Sequence
+from collections.abc import Sequence
 
 from core.enums import ClaimMode
 from core.models import GuildConfigRecord, TicketCategoryConfig

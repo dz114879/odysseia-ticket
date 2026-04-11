@@ -5,7 +5,7 @@ import inspect
 import logging
 from dataclasses import dataclass
 from time import monotonic
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 
 ScheduledCallback = Callable[[], Awaitable[None] | None]

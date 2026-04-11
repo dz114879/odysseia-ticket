@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 import discord
 

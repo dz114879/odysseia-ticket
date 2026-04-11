@@ -24,7 +24,7 @@ class LoggingService:
         bot: commands.Bot | None,
         log_file: Path,
         log_level: str,
-    ) -> "LoggingService":
+    ) -> LoggingService:
         logger = cls._build_logger(log_file=log_file, log_level=log_level)
         return cls(bot=bot, logger=logger)
 
@@ -57,7 +57,7 @@ class LoggingService:
             logger.addHandler(console_handler)
             logger.addHandler(file_handler)
             logger.propagate = False
-            setattr(logger, "_ticket_bot_configured", True)
+            logger._ticket_bot_configured = True
         else:
             for handler in logger.handlers:
                 handler.setLevel(resolved_level)

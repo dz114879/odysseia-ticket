@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.constants import SLEEP_CHANNEL_PREFIX
 from core.enums import ClaimMode, TicketPriority, TicketStatus

@@ -36,7 +36,7 @@ class FakeCategoryChannel:
 
 
 class FakeMessage:
-    def __init__(self, message_id: int, channel: "FakeTextChannel", *, content: str, view=None) -> None:
+    def __init__(self, message_id: int, channel: FakeTextChannel, *, content: str, view=None) -> None:
         self.id = message_id
         self.channel = channel
         self.content = content
@@ -51,7 +51,7 @@ class FakeTextChannel:
     def __init__(
         self,
         channel_id: int,
-        guild: "FakeGuild",
+        guild: FakeGuild,
         *,
         name: str,
         category: FakeCategoryChannel,

@@ -5,7 +5,8 @@ import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator
+from typing import Any
+from collections.abc import AsyncIterator
 
 from core.enums import TicketStatus
 from core.errors import PermissionDeniedError, ValidationError

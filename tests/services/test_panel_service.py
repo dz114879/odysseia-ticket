@@ -13,7 +13,7 @@ from services.panel_service import PanelService
 
 
 class FakeMessage:
-    def __init__(self, message_id: int, channel: "FakeChannel", *, embed, view) -> None:
+    def __init__(self, message_id: int, channel: FakeChannel, *, embed, view) -> None:
         self.id = message_id
         self.channel = channel
         self.embed = embed
