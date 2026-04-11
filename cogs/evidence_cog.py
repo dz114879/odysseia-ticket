@@ -33,8 +33,13 @@ class EvidenceCog(commands.Cog):
     @ticket_group.command(name="history", description="查看当前 ticket 中指定消息的快照时间线")
     @app_commands.guild_only()
     @app_commands.describe(message_id="要查询的 Discord 消息 ID")
-    async def history_command(self, interaction: discord.Interaction, message_id: int) -> None:
-        await self.show_message_history(interaction, message_id=message_id)
+    async def history_command(self, interaction: discord.Interaction, message_id: str) -> None:
+        try:
+            parsed_id = int(message_id)
+        except ValueError:
+            await self._send_ephemeral(interaction, "消息 ID 必须是一个有效的整数。")
+            return
+        await self.show_message_history(interaction, message_id=parsed_id)
 
     @ticket_group.command(name="recycle-bin", description="导出当前 ticket 的已删除消息快照摘要")
     @app_commands.guild_only()
