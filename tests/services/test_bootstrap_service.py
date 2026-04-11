@@ -26,6 +26,12 @@ class FakeLoggingService:
         rendered = message % args if args else message
         self.debug_messages.append(rendered)
 
+    async def send_guild_log(self, *args, **kwargs) -> bool:
+        return False
+
+    async def send_ticket_log(self, *args, **kwargs) -> bool:
+        return False
+
 
 @pytest.mark.asyncio
 async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(

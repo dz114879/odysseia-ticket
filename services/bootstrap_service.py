@@ -28,6 +28,7 @@ from services.sleep_service import SleepService
 from services.snapshot_query_service import SnapshotQueryService
 from services.snapshot_service import SnapshotService
 from services.staff_panel_service import StaffPanelService
+from services.staff_permission_service import StaffPermissionService
 from services.transfer_service import TransferService
 from storage.file_store import TicketFileStore
 from storage.notes_store import NotesStore
@@ -146,12 +147,14 @@ class BootstrapService:
             debounce_manager=self.debounce_manager,
         )
         self.capacity_service = CapacityService(self.database)
+        permission_service = StaffPermissionService(logging_service=self.logging_service)
         self.queue_service = QueueService(
             self.database,
             bot=self.bot,
             capacity_service=self.capacity_service,
             lock_manager=self.lock_manager,
             snapshot_service=self.snapshot_service,
+            logging_service=self.logging_service,
             logger=self.logging_service.child("queue"),
         )
         self.sleep_service = SleepService(
@@ -160,12 +163,14 @@ class BootstrapService:
             staff_panel_service=staff_panel_service,
             capacity_service=self.capacity_service,
             queue_service=self.queue_service,
+            permission_service=permission_service,
         )
         self.moderation_service = ModerationService(
             self.database,
             bot=self.bot,
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
+            permission_service=permission_service,
             logger=self.logging_service.child("moderation"),
         )
         self.transfer_service = TransferService(
@@ -176,6 +181,7 @@ class BootstrapService:
             logging_service=self.logging_service,
             capacity_service=self.capacity_service,
             queue_service=self.queue_service,
+            permission_service=permission_service,
             logger=self.logging_service.child("transfer"),
         )
         archive_service = ArchiveService(
@@ -200,7 +206,9 @@ class BootstrapService:
             bot=self.bot,
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
+            permission_service=permission_service,
             archive_service=archive_service,
+            logging_service=self.logging_service,
             capacity_service=self.capacity_service,
             queue_service=self.queue_service,
             logger=self.logging_service.child("close"),

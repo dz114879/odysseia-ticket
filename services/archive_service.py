@@ -126,7 +126,7 @@ class ArchiveService:
                 channel_deleted = channel_deleted or deleted_now
 
             if ticket.status is TicketStatus.CHANNEL_DELETED:
-                ticket, cleaned_now = self._ensure_cleanup_completed(ticket)
+                ticket, cleaned_now = await self._ensure_cleanup_completed(ticket)
                 cleaned_up = cleaned_up or cleaned_now
 
             return self._build_result(
@@ -279,6 +279,13 @@ class ArchiveService:
                         ticket.ticket_id,
                         exc_info=True,
                     )
+                    await self._send_ticket_log(
+                        ticket,
+                        level="warning",
+                        title="Ticket channel deletion failed",
+                        description=f"归档完成后删除频道失败：{exc}",
+                        extra={"channel_id": str(ticket.channel_id)},
+                    )
                     return ticket, False
         elif not channel_missing:
             self.logger.warning(
@@ -286,13 +293,19 @@ class ArchiveService:
                 ticket.ticket_id,
                 ticket.channel_id,
             )
+            await self._send_ticket_log(
+                ticket,
+                level="warning",
+                title="Ticket channel not resolvable",
+                description=f"归档完成后无法解析频道，跳过删除。channel_id={ticket.channel_id}",
+            )
             return ticket, False
 
         updated_ticket = self.ticket_repository.update(ticket.ticket_id, status=TicketStatus.CHANNEL_DELETED) or ticket
         await self._trigger_queue_fill(ticket.guild_id)
         return updated_ticket, True
 
-    def _ensure_cleanup_completed(self, ticket: TicketRecord) -> tuple[TicketRecord, bool]:
+    async def _ensure_cleanup_completed(self, ticket: TicketRecord) -> tuple[TicketRecord, bool]:
         try:
             self.cleanup_service.cleanup_ticket(ticket)
         except Exception:
@@ -300,6 +313,12 @@ class ArchiveService:
                 "Cleanup failed after ticket channel deletion. ticket_id=%s",
                 ticket.ticket_id,
                 exc_info=True,
+            )
+            await self._send_ticket_log(
+                ticket,
+                level="warning",
+                title="Ticket cleanup failed",
+                description="归档后清理操作失败（文件/缓存清理）。",
             )
             return ticket, False
 

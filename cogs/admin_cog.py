@@ -77,6 +77,14 @@ class AdminCog(commands.Cog):
             admin_role.id,
             len(result.categories),
         )
+        await self.logging_service.send_guild_log(
+            guild.id,
+            "info",
+            "Guild setup completed",
+            f"管理员 <@{interaction.user.id}> 完成了服务器设置。",
+            channel_id=result.config.log_channel_id,
+            extra={"admin_role_id": str(admin_role.id), "categories": str(len(result.categories))},
+        )
         await self._send_ephemeral(interaction, self._build_setup_success_message(result))
 
     async def _ensure_setup_permission(self, interaction: discord.Interaction) -> None:

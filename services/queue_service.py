@@ -50,10 +50,12 @@ class QueueService:
         capacity_service: CapacityService | None = None,
         lock_manager: LockManager | None = None,
         snapshot_service: SnapshotService | None = None,
+        logging_service: Any | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
+        self.logging_service = logging_service
         self.guild_repository = guild_repository or GuildRepository(database)
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.capacity_service = capacity_service or CapacityService(
@@ -167,6 +169,11 @@ class QueueService:
                     ticket.ticket_id,
                     ticket.channel_id,
                 )
+                await self._send_ticket_log(
+                    ticket.ticket_id, guild_id, "warning", "Queue promotion deferred",
+                    f"排队 ticket 推进延迟：无法解析频道 {ticket.channel_id}",
+                    log_channel_id=getattr(config, "log_channel_id", None),
+                )
                 return self._build_abandoned_result(abandoned_ticket, abandoned_position)
 
             channel = channel_resolution.value
@@ -176,6 +183,11 @@ class QueueService:
                     reason="source channel is unavailable while promoting queued ticket",
                 )
                 abandoned_position = position
+                await self._send_ticket_log(
+                    ticket.ticket_id, guild_id, "warning", "Queued ticket abandoned",
+                    f"排队 ticket 已废弃：频道不存在 (channel_id={ticket.channel_id})",
+                    log_channel_id=getattr(config, "log_channel_id", None),
+                )
                 continue
 
             guild = getattr(channel, "guild", None)
@@ -185,6 +197,11 @@ class QueueService:
                     "Queued ticket promotion deferred because creator could not be resolved yet. ticket_id=%s creator_id=%s",
                     ticket.ticket_id,
                     ticket.creator_id,
+                )
+                await self._send_ticket_log(
+                    ticket.ticket_id, guild_id, "warning", "Queue promotion deferred",
+                    f"排队 ticket 推进延迟：无法解析创建者 (creator_id={ticket.creator_id})",
+                    log_channel_id=getattr(config, "log_channel_id", None),
                 )
                 return self._build_abandoned_result(abandoned_ticket, abandoned_position)
 
@@ -198,6 +215,11 @@ class QueueService:
                     reason="creator is unavailable while promoting queued ticket",
                 )
                 abandoned_position = position
+                await self._send_ticket_log(
+                    ticket.ticket_id, guild_id, "warning", "Queued ticket abandoned",
+                    f"排队 ticket 已废弃：创建者不可用 (creator_id={ticket.creator_id})",
+                    log_channel_id=getattr(config, "log_channel_id", None),
+                )
                 continue
 
             submit_service = self._build_submit_service()
@@ -212,11 +234,21 @@ class QueueService:
                     ticket.ticket_id,
                     exc_info=True,
                 )
+                await self._send_ticket_log(
+                    ticket.ticket_id, guild_id, "warning", "Queue promotion deferred",
+                    "排队 ticket 推进延迟：验证失败。",
+                    log_channel_id=getattr(config, "log_channel_id", None),
+                )
                 return None
-            except Exception:
+            except Exception as exc:
                 self.logger.exception(
                     "Failed to promote queued ticket. ticket_id=%s",
                     ticket.ticket_id,
+                )
+                await self._send_ticket_log(
+                    ticket.ticket_id, guild_id, "warning", "Queue promotion failed",
+                    f"排队 ticket 推进失败：{exc}",
+                    log_channel_id=getattr(config, "log_channel_id", None),
                 )
                 return None
 
@@ -340,12 +372,23 @@ class QueueService:
             return
         try:
             await delete(reason=reason)
-        except Exception:
+        except Exception as exc:
+            channel_id = getattr(channel, "id", None)
             self.logger.warning(
                 "Failed to delete abandoned queued ticket channel. channel_id=%s",
-                getattr(channel, "id", None),
+                channel_id,
                 exc_info=True,
             )
+            guild = getattr(channel, "guild", None)
+            guild_id = getattr(guild, "id", None)
+            if self.logging_service is not None and guild_id is not None:
+                config = self.guild_repository.get_config(guild_id)
+                await self.logging_service.send_guild_log(
+                    guild_id, "warning", "Queued ticket channel deletion failed",
+                    f"删除废弃排队 ticket 的频道失败：{exc}",
+                    channel_id=getattr(config, "log_channel_id", None) if config else None,
+                    extra={"channel_id": str(channel_id)},
+                )
 
     def _mark_abandoned(self, ticket: TicketRecord, *, reason: str) -> TicketRecord:
         self.logger.warning("Queued ticket abandoned. ticket_id=%s reason=%s", ticket.ticket_id, reason)
@@ -356,4 +399,27 @@ class QueueService:
                 queued_at=None,
             )
             or ticket
+        )
+
+    async def _send_ticket_log(
+        self,
+        ticket_id: str,
+        guild_id: int,
+        level: str,
+        title: str,
+        description: str,
+        *,
+        log_channel_id: int | None = None,
+        extra: dict | None = None,
+    ) -> None:
+        if self.logging_service is None:
+            return
+        await self.logging_service.send_ticket_log(
+            ticket_id=ticket_id,
+            guild_id=guild_id,
+            level=level,
+            title=title,
+            description=description,
+            channel_id=log_channel_id,
+            extra=extra,
         )

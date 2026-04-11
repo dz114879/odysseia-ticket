@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import discord
@@ -16,6 +17,8 @@ from discord_ui.panel_embeds import build_panel_request_preview_embed
 if TYPE_CHECKING:
     from services.creation_service import DraftCreationResult
     from services.panel_service import PanelService
+
+_logger = logging.getLogger(__name__)
 
 
 def build_public_panel_custom_id(guild_id: int, nonce: str) -> str:
@@ -73,7 +76,24 @@ class DraftCreateConfirmButton(discord.ui.Button):
         except (StaleInteractionError, ValidationError) as exc:
             await interaction.response.send_message(str(exc), ephemeral=True)
             return
-        except Exception:
+        except Exception as exc:
+            _logger.exception(
+                "Draft creation failed silently. guild_id=%s user_id=%s category=%s",
+                self.guild_id,
+                interaction.user.id,
+                self.category.category_key,
+            )
+            if self.panel_service is not None and getattr(self.panel_service, "logging_service", None) is not None:
+                guild_repo = getattr(self.panel_service, "guild_repository", None)
+                config = guild_repo.get_config(self.guild_id) if guild_repo else None
+                await self.panel_service.logging_service.send_guild_log(
+                    self.guild_id,
+                    "error",
+                    "Draft ticket creation failed",
+                    f"用户 <@{interaction.user.id}> 创建 draft ticket 失败：{exc}",
+                    channel_id=getattr(config, "log_channel_id", None) if config else None,
+                    extra={"category": self.category.category_key, "error_type": type(exc).__name__},
+                )
             await interaction.response.send_message(
                 "创建 draft ticket 失败，请稍后重试。",
                 ephemeral=True,

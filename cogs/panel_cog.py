@@ -21,7 +21,7 @@ class PanelCog(commands.Cog):
         self.bot = bot
         self.logging_service = resources.logging_service
         self.guild_config_service = GuildConfigService(resources.database)
-        self.panel_service = PanelService(resources.database, bot=bot)
+        self.panel_service = PanelService(resources.database, bot=bot, logging_service=resources.logging_service)
 
     async def cog_load(self) -> None:
         self.create_panel_command.binding = self
@@ -64,6 +64,13 @@ class PanelCog(commands.Cog):
             result.record.panel_id,
             result.record.message_id,
         )
+        config = self.guild_config_service.get_config(guild.id)
+        await self.logging_service.send_guild_log(
+            guild.id, "info", "Panel created",
+            f"管理员 <@{interaction.user.id}> 创建了公开面板。",
+            channel_id=getattr(config, "log_channel_id", None) if config else None,
+            extra={"panel_id": str(result.record.panel_id)},
+        )
         await self._send_ephemeral(interaction, self._build_create_success_message(result))
 
     async def refresh_panel(self, interaction: discord.Interaction) -> None:
@@ -80,6 +87,13 @@ class PanelCog(commands.Cog):
             guild.id,
             result.record.panel_id,
             result.record.message_id,
+        )
+        config = self.guild_config_service.get_config(guild.id)
+        await self.logging_service.send_guild_log(
+            guild.id, "info", "Panel refreshed",
+            f"管理员 <@{interaction.user.id}> 刷新了公开面板。",
+            channel_id=getattr(config, "log_channel_id", None) if config else None,
+            extra={"panel_id": str(result.record.panel_id)},
         )
         await self._send_ephemeral(
             interaction,
@@ -108,6 +122,13 @@ class PanelCog(commands.Cog):
             guild.id,
             result.record.panel_id,
             result.message_deleted,
+        )
+        config = self.guild_config_service.get_config(guild.id)
+        await self.logging_service.send_guild_log(
+            guild.id, "info", "Panel removed",
+            f"管理员 <@{interaction.user.id}> 移除了公开面板。",
+            channel_id=getattr(config, "log_channel_id", None) if config else None,
+            extra={"panel_id": str(result.record.panel_id), "message_deleted": str(result.message_deleted)},
         )
         await self._send_ephemeral(interaction, self._build_remove_success_message(result))
 

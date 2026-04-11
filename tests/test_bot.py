@@ -24,6 +24,12 @@ class FakeLoggingService:
     def log_local_warning(self, message: str, *args) -> None:
         self.warning_messages.append(message % args if args else message)
 
+    async def send_guild_log(self, *args, **kwargs) -> bool:
+        return False
+
+    async def send_ticket_log(self, *args, **kwargs) -> bool:
+        return False
+
 
 def seed_active_panel_state(migrated_database) -> PanelRecord:
     guild_repository = GuildRepository(migrated_database)

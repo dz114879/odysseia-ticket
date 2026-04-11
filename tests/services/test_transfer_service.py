@@ -85,6 +85,9 @@ class FakeLoggingService:
     def __init__(self) -> None:
         self.ticket_logs: list[dict[str, object]] = []
 
+    async def send_guild_log(self, *args, **kwargs) -> bool:
+        return False
+
     async def send_ticket_log(self, **kwargs) -> bool:
         self.ticket_logs.append(kwargs)
         return True

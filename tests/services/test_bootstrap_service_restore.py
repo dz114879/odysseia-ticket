@@ -26,6 +26,12 @@ class FakeLoggingService:
         del kwargs
         self.debug_messages.append(message % args if args else message)
 
+    async def send_guild_log(self, *args, **kwargs) -> bool:
+        return False
+
+    async def send_ticket_log(self, *args, **kwargs) -> bool:
+        return False
+
 
 @pytest.mark.asyncio
 async def test_bootstrap_logs_snapshot_restore_report(

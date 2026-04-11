@@ -11,6 +11,9 @@ import discord
 from core.enums import ClaimMode
 from core.models import GuildConfigRecord, TicketCategoryConfig
 
+if __import__("typing").TYPE_CHECKING:
+    from services.logging_service import LoggingService
+
 
 @dataclass(frozen=True, slots=True)
 class StaffPermissionUpdate:
@@ -23,6 +26,8 @@ _logger = logging.getLogger(__name__)
 
 
 class StaffPermissionService:
+    def __init__(self, *, logging_service: LoggingService | None = None) -> None:
+        self.logging_service = logging_service
     async def apply_ticket_permissions(
         self,
         channel: Any,
@@ -79,7 +84,7 @@ class StaffPermissionService:
                     overwrite=update.overwrite,
                     reason=update.reason,
                 )
-            except discord.HTTPException:  # noqa: PERF203
+            except discord.HTTPException as exc:  # noqa: PERF203
                 _logger.warning(
                     "set_permissions failed for target %s (id=%s) in channel %s: %s",
                     update.target,
@@ -87,6 +92,14 @@ class StaffPermissionService:
                     getattr(channel, "id", "?"),
                     update.reason,
                     exc_info=True,
+                )
+                await self._send_permission_failure_log(
+                    guild_id=getattr(guild, "id", None),
+                    log_channel_id=getattr(config, "log_channel_id", None),
+                    channel_id=getattr(channel, "id", None),
+                    target_id=getattr(update.target, "id", None),
+                    reason=update.reason,
+                    exc=exc,
                 )
 
     async def apply_staff_overwrite_plan(
@@ -129,7 +142,7 @@ class StaffPermissionService:
                     overwrite=update.overwrite,
                     reason=update.reason,
                 )
-            except discord.HTTPException:  # noqa: PERF203
+            except discord.HTTPException as exc:  # noqa: PERF203
                 _logger.warning(
                     "set_permissions failed for target %s (id=%s) in channel %s: %s",
                     update.target,
@@ -137,6 +150,14 @@ class StaffPermissionService:
                     getattr(channel, "id", "?"),
                     update.reason,
                     exc_info=True,
+                )
+                await self._send_permission_failure_log(
+                    guild_id=getattr(guild, "id", None),
+                    log_channel_id=getattr(config, "log_channel_id", None),
+                    channel_id=getattr(channel, "id", None),
+                    target_id=getattr(update.target, "id", None),
+                    reason=update.reason,
+                    exc=exc,
                 )
 
     async def apply_participant_overwrite(
@@ -146,6 +167,7 @@ class StaffPermissionService:
         target: Any,
         can_send: bool,
         reason: str,
+        log_channel_id: int | None = None,
     ) -> None:
         set_permissions = getattr(channel, "set_permissions", None)
         if set_permissions is None:
@@ -156,13 +178,22 @@ class StaffPermissionService:
                 overwrite=self.build_participant_overwrite(can_send=can_send),
                 reason=reason,
             )
-        except discord.HTTPException:
+        except discord.HTTPException as exc:
             _logger.warning(
                 "set_permissions failed for participant %s (id=%s): %s",
                 target,
                 getattr(target, "id", "?"),
                 reason,
                 exc_info=True,
+            )
+            guild = getattr(channel, "guild", None)
+            await self._send_permission_failure_log(
+                guild_id=getattr(guild, "id", None),
+                log_channel_id=log_channel_id,
+                channel_id=getattr(channel, "id", None),
+                target_id=getattr(target, "id", None),
+                reason=reason,
+                exc=exc,
             )
 
     def build_ticket_permission_plan(
@@ -435,6 +466,33 @@ class StaffPermissionService:
             )
 
         return updates
+
+    async def _send_permission_failure_log(
+        self,
+        *,
+        guild_id: int | None,
+        log_channel_id: int | None,
+        channel_id: int | None,
+        target_id: int | None,
+        reason: str,
+        exc: Exception,
+    ) -> None:
+        if self.logging_service is None or guild_id is None:
+            return
+        extra: dict[str, Any] = {}
+        if channel_id is not None:
+            extra["ticket_channel_id"] = str(channel_id)
+        if target_id is not None:
+            extra["target_id"] = str(target_id)
+        extra["reason"] = reason
+        await self.logging_service.send_guild_log(
+            guild_id,
+            "warning",
+            "Permission update failed",
+            f"set_permissions 调用失败：{exc}",
+            channel_id=log_channel_id,
+            extra=extra,
+        )
 
     @staticmethod
     def _build_hidden_staff_overwrite() -> discord.PermissionOverwrite:

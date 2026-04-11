@@ -11,6 +11,7 @@ from discord.ext import commands
 from config.env import EnvSettings, load_env_settings
 from config.static import APP_NAME, BASE_DIR
 from core.errors import ConfigurationError, ValidationError
+from db.repositories.guild_repository import GuildRepository
 from services.bootstrap_service import BootstrapResources, BootstrapService
 from services.panel_service import PanelService
 
@@ -85,11 +86,19 @@ class TicketBot(commands.Bot):
             ):
                 try:
                     await handler(message)
-                except Exception:  # noqa: PERF203
+                except Exception as exc:  # noqa: PERF203
                     self.resources.logging_service.log_local_warning(
                         "on_message handler failed: %s",
                         handler.__qualname__,
                         exc_info=True,
+                    )
+                    guild_id = getattr(message.guild, "id", None)
+                    await self.resources.logging_service.send_guild_log(
+                        guild_id or 0,
+                        "warning",
+                        "Message handler crashed",
+                        f"on_message 处理器 `{handler.__qualname__}` 崩溃：{exc}",
+                        channel_id=self._get_log_channel_id(guild_id),
                     )
 
         await self.process_commands(message)
@@ -142,6 +151,18 @@ class TicketBot(commands.Bot):
         logger = logging.getLogger(__name__)
         logger.warning("Unhandled app command error: %s", original, exc_info=original)
 
+        if self.resources is not None:
+            guild_id = getattr(interaction.guild, "id", None) if interaction.guild else None
+            command_name = getattr(interaction.command, "qualified_name", "unknown")
+            await self.resources.logging_service.send_guild_log(
+                guild_id or 0,
+                "error",
+                "Unhandled command error",
+                f"命令 `/{command_name}` 执行出错：{original}",
+                channel_id=self._get_log_channel_id(guild_id),
+                extra={"user_id": str(interaction.user.id), "error_type": type(original).__name__},
+            )
+
         await self._safe_send_error(interaction, user_message)
 
     @staticmethod
@@ -153,6 +174,12 @@ class TicketBot(commands.Bot):
                 await interaction.response.send_message(content, ephemeral=True)
         except discord.HTTPException:
             pass
+
+    def _get_log_channel_id(self, guild_id: int | None) -> int | None:
+        if self.resources is None or guild_id is None:
+            return None
+        config = GuildRepository(self.resources.database).get_config(guild_id)
+        return getattr(config, "log_channel_id", None) if config else None
 
     async def _load_extensions(self) -> None:
         cogs_dir = BASE_DIR / "cogs"
@@ -176,7 +203,7 @@ class TicketBot(commands.Bot):
         if self.resources is None:
             return 0
 
-        panel_service = PanelService(self.resources.database, bot=self)
+        panel_service = PanelService(self.resources.database, bot=self, logging_service=self.resources.logging_service)
         restored_count = 0
 
         for panel in panel_service.list_active_panels():
@@ -188,6 +215,14 @@ class TicketBot(commands.Bot):
                     panel.guild_id,
                     panel.panel_id,
                     exc,
+                )
+                await self.resources.logging_service.send_guild_log(
+                    panel.guild_id,
+                    "warning",
+                    "Panel view restore failed",
+                    f"启动时恢复面板视图失败：{exc}",
+                    channel_id=self._get_log_channel_id(panel.guild_id),
+                    extra={"panel_id": str(panel.panel_id)},
                 )
                 continue
 

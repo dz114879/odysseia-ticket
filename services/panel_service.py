@@ -44,9 +44,15 @@ class PanelService:
         panel_repository: PanelRepository | None = None,
         validation_service: ValidationService | None = None,
         creation_service: CreationService | None = None,
+        logging_service: Any | None = None,
+        guild_repository: Any | None = None,
     ) -> None:
+        from db.repositories.guild_repository import GuildRepository
+
         self.database = database
         self.bot = bot
+        self.logging_service = logging_service
+        self.guild_repository = guild_repository or GuildRepository(database)
         self.panel_repository = panel_repository or PanelRepository(database)
         self.validation_service = validation_service or ValidationService(database)
         bot_resources = getattr(bot, "resources", None) if bot is not None else None

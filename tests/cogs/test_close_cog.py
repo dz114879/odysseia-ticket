@@ -125,6 +125,12 @@ class FakeLoggingService:
     def log_local_info(self, message: str, *args) -> None:
         self.info_messages.append(message % args if args else message)
 
+    async def send_guild_log(self, *args, **kwargs) -> bool:
+        return False
+
+    async def send_ticket_log(self, *args, **kwargs) -> bool:
+        return False
+
 
 class FakeBot:
     def __init__(self, migrated_database) -> None:

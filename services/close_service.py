@@ -59,12 +59,14 @@ class CloseService:
         permission_service: StaffPermissionService | None = None,
         staff_panel_service: StaffPanelService | None = None,
         archive_service: ArchiveService | None = None,
+        logging_service: Any | None = None,
         logger: logging.Logger | None = None,
         capacity_service: CapacityService | None = None,
         queue_service: QueueService | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
+        self.logging_service = logging_service
         self.guild_repository = guild_repository or GuildRepository(database)
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.ticket_mute_repository = ticket_mute_repository or TicketMuteRepository(database)
@@ -296,12 +298,22 @@ class CloseService:
                 context=context,
                 ticket=context.ticket,
             )
-        except Exception:
+        except Exception as exc:
             self.logger.warning(
                 "Failed to restore ticket permissions after close-start rollback. ticket_id=%s",
                 context.ticket.ticket_id,
                 exc_info=True,
             )
+            if self.logging_service is not None:
+                config = self.guild_repository.get_config(context.ticket.guild_id)
+                await self.logging_service.send_ticket_log(
+                    ticket_id=context.ticket.ticket_id,
+                    guild_id=context.ticket.guild_id,
+                    level="warning",
+                    title="Close rollback permission restore failed",
+                    description=f"关闭回滚后恢复权限失败：{exc}",
+                    channel_id=getattr(config, "log_channel_id", None) if config else None,
+                )
 
     async def _freeze_ticket_permissions(
         self,

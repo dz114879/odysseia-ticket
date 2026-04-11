@@ -299,11 +299,21 @@ class TransferService:
                     ticket.ticket_id,
                     reference_time=reference_time,
                 )
-            except Exception:
+            except Exception as exc:
                 self.logger.exception(
                     "Failed to execute due transfer. ticket_id=%s",
                     ticket.ticket_id,
                 )
+                if self.logging_service is not None:
+                    config = self.guild_repository.get_config(ticket.guild_id)
+                    await self.logging_service.send_ticket_log(
+                        ticket_id=ticket.ticket_id,
+                        guild_id=ticket.guild_id,
+                        level="error",
+                        title="Transfer execution failed",
+                        description=f"定时 Transfer 执行失败：{exc}",
+                        channel_id=getattr(config, "log_channel_id", None) if config else None,
+                    )
                 continue
             if outcome is not None:
                 outcomes.append(outcome)
@@ -365,11 +375,20 @@ class TransferService:
                         ticket=updated_ticket,
                         previous_claimer_id=ticket.claimed_by,
                     )
-                except Exception:
+                except Exception as exc:
                     self.logger.exception(
                         "Failed to recalculate permissions after transfer execution. ticket_id=%s",
                         ticket.ticket_id,
                     )
+                    if self.logging_service is not None:
+                        await self.logging_service.send_ticket_log(
+                            ticket_id=ticket.ticket_id,
+                            guild_id=ticket.guild_id,
+                            level="warning",
+                            title="Transfer permission sync failed",
+                            description=f"Transfer 执行后权限重算失败：{exc}",
+                            channel_id=getattr(config, "log_channel_id", None),
+                        )
 
             log_message = None
             if channel is not None:
