@@ -84,7 +84,6 @@ async def test_ticket_bot_allows_missing_application_id(make_settings) -> None:
         await bot.close()
 
 
-
 @pytest.mark.asyncio
 async def test_setup_hook_restores_active_panel_persistent_views(
     make_settings,
@@ -177,15 +176,17 @@ async def test_setup_hook_skips_invalid_active_panel_recovery(
 
 
 @pytest.mark.asyncio
-async def test_on_message_routes_to_sleep_and_draft_services_before_processing_commands(
+async def test_on_message_routes_to_sleep_draft_and_snapshot_services_before_processing_commands(
     make_settings,
 ) -> None:
     bot = TicketBot(make_settings())
     sleep_service = SimpleNamespace(handle_message=AsyncMock())
     draft_timeout_service = SimpleNamespace(handle_message=AsyncMock())
+    snapshot_service = SimpleNamespace(handle_message=AsyncMock())
     bot.resources = SimpleNamespace(
         sleep_service=sleep_service,
         draft_timeout_service=draft_timeout_service,
+        snapshot_service=snapshot_service,
     )
     bot.process_commands = AsyncMock()
     message = SimpleNamespace(
@@ -199,7 +200,69 @@ async def test_on_message_routes_to_sleep_and_draft_services_before_processing_c
 
         sleep_service.handle_message.assert_awaited_once_with(message)
         draft_timeout_service.handle_message.assert_awaited_once_with(message)
+        snapshot_service.handle_message.assert_awaited_once_with(message)
         bot.process_commands.assert_awaited_once_with(message)
+    finally:
+        bot.resources = None
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_edit_routes_to_snapshot_service(make_settings) -> None:
+    bot = TicketBot(make_settings())
+    snapshot_service = SimpleNamespace(handle_message_edit=AsyncMock())
+    bot.resources = SimpleNamespace(snapshot_service=snapshot_service)
+    before = SimpleNamespace(id=1)
+    after = SimpleNamespace(id=1)
+
+    try:
+        await bot.on_message_edit(before, after)
+        snapshot_service.handle_message_edit.assert_awaited_once_with(before, after)
+    finally:
+        bot.resources = None
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_on_message_delete_routes_to_snapshot_service(make_settings) -> None:
+    bot = TicketBot(make_settings())
+    snapshot_service = SimpleNamespace(handle_message_delete=AsyncMock())
+    bot.resources = SimpleNamespace(snapshot_service=snapshot_service)
+    message = SimpleNamespace(id=1)
+
+    try:
+        await bot.on_message_delete(message)
+        snapshot_service.handle_message_delete.assert_awaited_once_with(message)
+    finally:
+        bot.resources = None
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_on_raw_message_edit_routes_to_snapshot_service(make_settings) -> None:
+    bot = TicketBot(make_settings())
+    snapshot_service = SimpleNamespace(handle_raw_message_edit=AsyncMock())
+    bot.resources = SimpleNamespace(snapshot_service=snapshot_service)
+    payload = SimpleNamespace(channel_id=9001, message_id=1, data={"content": "edited"}, cached_message=None)
+
+    try:
+        await bot.on_raw_message_edit(payload)
+        snapshot_service.handle_raw_message_edit.assert_awaited_once_with(payload)
+    finally:
+        bot.resources = None
+        await bot.close()
+
+
+@pytest.mark.asyncio
+async def test_on_raw_message_delete_routes_to_snapshot_service(make_settings) -> None:
+    bot = TicketBot(make_settings())
+    snapshot_service = SimpleNamespace(handle_raw_message_delete=AsyncMock())
+    bot.resources = SimpleNamespace(snapshot_service=snapshot_service)
+    payload = SimpleNamespace(channel_id=9001, message_id=1, cached_message=None)
+
+    try:
+        await bot.on_raw_message_delete(payload)
+        snapshot_service.handle_raw_message_delete.assert_awaited_once_with(payload)
     finally:
         bot.resources = None
         await bot.close()

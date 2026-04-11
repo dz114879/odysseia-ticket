@@ -77,6 +77,9 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
     assert resources.moderation_service is not None
     assert resources.transfer_service is not None
     assert resources.close_service is not None
+    assert resources.snapshot_service is not None
+    assert resources.snapshot_query_service is not None
+    assert resources.notes_service is not None
 
 
 @pytest.mark.asyncio

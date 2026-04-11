@@ -41,6 +41,7 @@ def make_ticket(
     archive_message_id: int | None = None,
     archived_at: str | None = None,
     message_count: int | None = None,
+    snapshot_bootstrapped_at: str | None = None,
 ) -> TicketRecord:
     return TicketRecord(
         ticket_id=ticket_id,
@@ -70,6 +71,7 @@ def make_ticket(
         archive_message_id=archive_message_id,
         archived_at=archived_at,
         message_count=message_count,
+        snapshot_bootstrapped_at=snapshot_bootstrapped_at,
     )
 
 
@@ -98,6 +100,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             archive_message_id=7777,
             archived_at="2024-01-01T03:02:00+00:00",
             message_count=42,
+            snapshot_bootstrapped_at="2024-01-01T01:05:00+00:00",
         )
     )
 
@@ -125,6 +128,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.archive_message_id == 7777
     assert loaded.archived_at == "2024-01-01T03:02:00+00:00"
     assert loaded.message_count == 42
+    assert loaded.snapshot_bootstrapped_at == "2024-01-01T01:05:00+00:00"
     assert repository.get_by_channel_id(501) == loaded
 
 
@@ -262,6 +266,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
             archive_message_id=9001,
             archived_at="2024-02-01T03:02:00+00:00",
             message_count=11,
+            snapshot_bootstrapped_at="2024-02-01T01:30:00+00:00",
         )
     )
 
@@ -286,6 +291,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         archive_message_id=None,
         archived_at=None,
         message_count=None,
+        snapshot_bootstrapped_at=None,
     )
 
     assert upserted.created_at == "2024-01-01T00:00:00+00:00"
@@ -309,6 +315,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert upserted.archive_message_id == 9001
     assert upserted.archived_at == "2024-02-01T03:02:00+00:00"
     assert upserted.message_count == 11
+    assert upserted.snapshot_bootstrapped_at == "2024-02-01T01:30:00+00:00"
 
     assert updated is not None
     assert updated.created_at == "2024-01-01T00:00:00+00:00"
@@ -332,6 +339,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.archive_message_id is None
     assert updated.archived_at is None
     assert updated.message_count is None
+    assert updated.snapshot_bootstrapped_at is None
     assert updated.updated_at == "2024-03-01T00:00:00+00:00"
 
     assert repository.delete("ticket-100") is True

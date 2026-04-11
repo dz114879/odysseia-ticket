@@ -30,6 +30,7 @@ class SubmitCog(commands.Cog):
         self.submit_service = SubmitService(
             resources.database,
             lock_manager=getattr(resources, "lock_manager", None),
+            snapshot_service=getattr(resources, "snapshot_service", None),
         )
 
         if not getattr(bot, "_draft_welcome_view_registered", False):

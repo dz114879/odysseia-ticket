@@ -14,6 +14,15 @@ class CacheItem(Generic[T]):
     expires_at: float | None
 
 
+@dataclass(frozen=True, slots=True)
+class SnapshotLatestState:
+    author_id: int | None
+    author_name: str
+    content: str
+    attachments: tuple[str, ...]
+    timestamp: str
+
+
 class TTLCache(Generic[T]):
     def __init__(self) -> None:
         self._items: dict[str, CacheItem[T]] = {}
@@ -59,6 +68,8 @@ class RuntimeCacheStore:
     def __init__(self) -> None:
         self.latest_messages: TTLCache[dict] = TTLCache()
         self.flags: TTLCache[bool] = TTLCache()
+        self.snapshot_latest_messages: TTLCache[SnapshotLatestState] = TTLCache()
+        self.snapshot_message_counts: TTLCache[int] = TTLCache()
 
     def remember_message(
         self,
@@ -82,5 +93,113 @@ class RuntimeCacheStore:
         value = self.flags.get(key)
         return default if value is None else value
 
+    def remember_snapshot_state(
+        self,
+        channel_id: int,
+        message_id: int,
+        state: SnapshotLatestState,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        self.snapshot_latest_messages.set(
+            self._snapshot_message_key(channel_id, message_id),
+            state,
+            ttl_seconds=ttl_seconds,
+        )
+
+    def get_snapshot_state(
+        self,
+        channel_id: int,
+        message_id: int,
+    ) -> SnapshotLatestState | None:
+        return self.snapshot_latest_messages.get(
+            self._snapshot_message_key(channel_id, message_id)
+        )
+
+    def forget_snapshot_state(self, channel_id: int, message_id: int) -> SnapshotLatestState | None:
+        return self.snapshot_latest_messages.pop(
+            self._snapshot_message_key(channel_id, message_id)
+        )
+
+    def set_snapshot_message_count(
+        self,
+        channel_id: int,
+        count: int,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        self.snapshot_message_counts.set(
+            self._snapshot_count_key(channel_id),
+            count,
+            ttl_seconds=ttl_seconds,
+        )
+
+    def get_snapshot_message_count(self, channel_id: int, default: int = 0) -> int:
+        value = self.snapshot_message_counts.get(self._snapshot_count_key(channel_id))
+        return default if value is None else value
+
+    def increment_snapshot_message_count(self, channel_id: int) -> int:
+        next_value = self.get_snapshot_message_count(channel_id, default=0) + 1
+        self.set_snapshot_message_count(channel_id, next_value)
+        return next_value
+
+    def set_snapshot_threshold_flag(
+        self,
+        channel_id: int,
+        flag_name: str,
+        value: bool = True,
+        *,
+        ttl_seconds: float | None = None,
+    ) -> None:
+        self.set_flag(
+            self._snapshot_threshold_key(channel_id, flag_name),
+            value,
+            ttl_seconds=ttl_seconds,
+        )
+
+    def get_snapshot_threshold_flag(
+        self,
+        channel_id: int,
+        flag_name: str,
+        default: bool = False,
+    ) -> bool:
+        return self.get_flag(
+            self._snapshot_threshold_key(channel_id, flag_name),
+            default=default,
+        )
+
+    def clear_ticket_snapshot_state(self, channel_id: int) -> int:
+        removed_count = 0
+        message_prefix = f"snapshot:{channel_id}:"
+        threshold_prefix = f"snapshot-threshold:{channel_id}:"
+        for key in list(self.snapshot_latest_messages._items.keys()):
+            if key.startswith(message_prefix):
+                self.snapshot_latest_messages.pop(key)
+                removed_count += 1
+        if self.snapshot_message_counts.pop(self._snapshot_count_key(channel_id)) is not None:
+            removed_count += 1
+        for key in list(self.flags._items.keys()):
+            if key.startswith(threshold_prefix):
+                self.flags.pop(key)
+                removed_count += 1
+        return removed_count
+
     def sweep(self) -> int:
-        return self.latest_messages.clear_expired() + self.flags.clear_expired()
+        return (
+            self.latest_messages.clear_expired()
+            + self.flags.clear_expired()
+            + self.snapshot_latest_messages.clear_expired()
+            + self.snapshot_message_counts.clear_expired()
+        )
+
+    @staticmethod
+    def _snapshot_message_key(channel_id: int, message_id: int) -> str:
+        return f"snapshot:{channel_id}:{message_id}"
+
+    @staticmethod
+    def _snapshot_count_key(channel_id: int) -> str:
+        return f"snapshot-count:{channel_id}"
+
+    @staticmethod
+    def _snapshot_threshold_key(channel_id: int, flag_name: str) -> str:
+        return f"snapshot-threshold:{channel_id}:{flag_name}"

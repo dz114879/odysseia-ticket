@@ -150,6 +150,12 @@ class FakeTextChannel:
         return iterator()
 
 
+class FakeDiscordNotFound(Exception):
+    def __init__(self, message: str = "channel not found") -> None:
+        super().__init__(message)
+        self.status = 404
+
+
 class FakeBot:
     def __init__(self, *channels: FakeTextChannel) -> None:
         self.channels = {channel.id: channel for channel in channels}
@@ -160,7 +166,7 @@ class FakeBot:
     async def fetch_channel(self, channel_id: int):
         channel = self.channels.get(channel_id)
         if channel is None:
-            raise RuntimeError("channel not found")
+            raise FakeDiscordNotFound()
         return channel
 
 
@@ -435,3 +441,37 @@ async def test_archive_service_is_idempotent_after_archive_sent_without_resendin
     assert stored.archive_message_id == 5555
     assert archive_channel.sent_messages == []
     assert list(exports_dir.glob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_archive_service_keeps_archive_sent_when_channel_resolution_temporarily_fails(
+    prepared_close_context,
+    tmp_path,
+) -> None:
+    _, archive_service, _, bot = build_close_service(prepared_close_context, tmp_path)
+    ticket_repository = prepared_close_context["ticket_repository"]
+    channel = prepared_close_context["channel"]
+    ticket = prepared_close_context["ticket"]
+
+    ticket_repository.update(
+        ticket.ticket_id,
+        status=TicketStatus.ARCHIVE_SENT,
+        archive_message_id=7777,
+        archived_at="2024-01-01T02:01:00+00:00",
+        message_count=3,
+    )
+    bot.channels.pop(channel.id)
+
+    async def failing_fetch_channel(channel_id: int):
+        raise RuntimeError(f"temporary fetch failure for {channel_id}")
+
+    bot.fetch_channel = failing_fetch_channel
+
+    outcome = await archive_service.archive_ticket(ticket.ticket_id)
+    stored = ticket_repository.get_by_ticket_id(ticket.ticket_id)
+
+    assert outcome is not None
+    assert outcome.final_status is TicketStatus.ARCHIVE_SENT
+    assert outcome.channel_deleted is False
+    assert stored is not None and stored.status is TicketStatus.ARCHIVE_SENT
+    assert channel.deleted is False

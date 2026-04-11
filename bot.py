@@ -79,8 +79,29 @@ class TicketBot(commands.Bot):
         if self.resources is not None:
             await self.resources.sleep_service.handle_message(message)
             await self.resources.draft_timeout_service.handle_message(message)
+            await self.resources.snapshot_service.handle_message(message)
 
         await self.process_commands(message)
+
+    async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
+        if self.resources is None:
+            return
+        await self.resources.snapshot_service.handle_message_edit(before, after)
+
+    async def on_message_delete(self, message: discord.Message) -> None:
+        if self.resources is None:
+            return
+        await self.resources.snapshot_service.handle_message_delete(message)
+
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent) -> None:
+        if self.resources is None:
+            return
+        await self.resources.snapshot_service.handle_raw_message_edit(payload)
+
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        if self.resources is None:
+            return
+        await self.resources.snapshot_service.handle_raw_message_delete(payload)
 
     async def _load_extensions(self) -> None:
         cogs_dir = BASE_DIR / "cogs"

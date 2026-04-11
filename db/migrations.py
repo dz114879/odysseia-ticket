@@ -207,6 +207,11 @@ _MIGRATION_V7_STATEMENTS = (
 )
 
 
+_MIGRATION_V8_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN snapshot_bootstrapped_at TEXT;",
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
@@ -233,6 +238,10 @@ def _migration_v6_create_ticket_mutes_table(connection: sqlite3.Connection) -> N
 
 def _migration_v7_add_close_archive_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V7_STATEMENTS)
+
+
+def _migration_v8_add_snapshot_bootstrap_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V8_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -278,6 +287,11 @@ MIGRATIONS = [
         version=7,
         name="add_close_archive_tracking",
         operation=_migration_v7_add_close_archive_tracking,
+    ),
+    Migration(
+        version=8,
+        name="add_snapshot_bootstrap_tracking",
+        operation=_migration_v8_add_snapshot_bootstrap_tracking,
     ),
 ]
 

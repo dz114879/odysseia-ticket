@@ -60,6 +60,7 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert "archive_message_id" in ticket_column_names
     assert "archived_at" in ticket_column_names
     assert "message_count" in ticket_column_names
+    assert "snapshot_bootstrapped_at" in ticket_column_names
 
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:

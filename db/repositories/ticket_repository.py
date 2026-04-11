@@ -49,6 +49,7 @@ class TicketRepository(BaseRepository):
             archive_message_id=row["archive_message_id"],
             archived_at=row["archived_at"],
             message_count=row["message_count"],
+            snapshot_bootstrapped_at=row["snapshot_bootstrapped_at"],
         )
 
     def create(
@@ -90,9 +91,10 @@ class TicketRepository(BaseRepository):
                     closed_at,
                     archive_message_id,
                     archived_at,
-                    message_count
+                    message_count,
+                    snapshot_bootstrapped_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -122,6 +124,7 @@ class TicketRepository(BaseRepository):
                     record.archive_message_id,
                     record.archived_at,
                     record.message_count,
+                    record.snapshot_bootstrapped_at,
                 ),
             )
         return TicketRecord(
@@ -152,6 +155,7 @@ class TicketRepository(BaseRepository):
             archive_message_id=record.archive_message_id,
             archived_at=record.archived_at,
             message_count=record.message_count,
+            snapshot_bootstrapped_at=record.snapshot_bootstrapped_at,
         )
 
     def upsert(
@@ -193,9 +197,10 @@ class TicketRepository(BaseRepository):
                     closed_at,
                     archive_message_id,
                     archived_at,
-                    message_count
+                    message_count,
+                    snapshot_bootstrapped_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -221,7 +226,8 @@ class TicketRepository(BaseRepository):
                     closed_at = excluded.closed_at,
                     archive_message_id = excluded.archive_message_id,
                     archived_at = excluded.archived_at,
-                    message_count = excluded.message_count;
+                    message_count = excluded.message_count,
+                    snapshot_bootstrapped_at = excluded.snapshot_bootstrapped_at;
                 """,
                 (
                     record.ticket_id,
@@ -251,6 +257,7 @@ class TicketRepository(BaseRepository):
                     record.archive_message_id,
                     record.archived_at,
                     record.message_count,
+                    record.snapshot_bootstrapped_at,
                 ),
             )
         return self.get_by_ticket_id(record.ticket_id, connection=connection) or TicketRecord(
@@ -281,6 +288,7 @@ class TicketRepository(BaseRepository):
             archive_message_id=record.archive_message_id,
             archived_at=record.archived_at,
             message_count=record.message_count,
+            snapshot_bootstrapped_at=record.snapshot_bootstrapped_at,
         )
 
     def get_by_ticket_id(
@@ -427,6 +435,7 @@ class TicketRepository(BaseRepository):
         archive_message_id: int | None | object = UNSET,
         archived_at: str | None | object = UNSET,
         message_count: int | None | object = UNSET,
+        snapshot_bootstrapped_at: str | None | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> TicketRecord | None:
         updates: dict[str, object] = {}
@@ -483,6 +492,8 @@ class TicketRepository(BaseRepository):
             updates["archived_at"] = archived_at
         if message_count is not UNSET:
             updates["message_count"] = message_count
+        if snapshot_bootstrapped_at is not UNSET:
+            updates["snapshot_bootstrapped_at"] = snapshot_bootstrapped_at
 
         if updated_at is not UNSET:
             updates["updated_at"] = updated_at

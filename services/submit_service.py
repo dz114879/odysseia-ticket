@@ -14,6 +14,7 @@ from runtime.locks import LockManager
 from discord_ui.panel_embeds import build_staff_control_panel_embed
 from discord_ui.staff_panel_view import StaffPanelView
 from services.draft_service import DraftService
+from services.snapshot_service import SnapshotService
 from services.submission_guard_service import SubmissionContext, SubmissionGuardService
 
 
@@ -38,12 +39,14 @@ class SubmitService:
         ticket_repository: TicketRepository | None = None,
         lock_manager: LockManager | None = None,
         permission_service: StaffPermissionService | None = None,
+        snapshot_service: SnapshotService | None = None,
     ) -> None:
         self.database = database
         self.guard_service = guard_service or SubmissionGuardService(database)
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.lock_manager = lock_manager
         self.permission_service = permission_service or StaffPermissionService()
+        self.snapshot_service = snapshot_service
 
     async def submit_draft_ticket(
         self,
@@ -94,6 +97,12 @@ class SubmitService:
                 context.ticket.ticket_id,
                 status=TicketStatus.SUBMITTED,
             ) or context.ticket
+            if self.snapshot_service is not None:
+                bootstrap_result = await self.snapshot_service.bootstrap_from_channel_history(
+                    updated_ticket,
+                    channel,
+                )
+                updated_ticket = bootstrap_result.ticket
             divider_message = await self._send_submission_divider(channel, updated_ticket)
             staff_panel_message = await self._send_staff_control_panel(
                 channel,

@@ -11,6 +11,7 @@ from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
 from discord_ui.staff_panel_view import StaffPanelView
+from services.snapshot_service import SnapshotBootstrapResult
 from services.submit_service import SubmitService
 
 
@@ -107,6 +108,20 @@ class FakeChannel:
 
     async def pins(self) -> list[FakeMessage]:
         return list(self.pinned_messages)
+
+
+class FakeSnapshotService:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def bootstrap_from_channel_history(self, ticket: TicketRecord, channel: FakeChannel) -> SnapshotBootstrapResult:
+        self.calls.append({"ticket": ticket, "channel": channel})
+        bootstrapped_ticket = TicketRepository(self.database).update(
+            ticket.ticket_id,
+            snapshot_bootstrapped_at="2024-01-01T01:10:00+00:00",
+            message_count=1,
+        ) or ticket
+        return SnapshotBootstrapResult(ticket=bootstrapped_ticket, create_count=1, skipped=False)
 
 
 @pytest.fixture
@@ -233,6 +248,33 @@ async def test_submit_draft_ticket_happy_path_updates_status_permissions_and_mes
     assert result.staff_panel_message.embed.title == "🛠️ Staff 控制面板"
     assert isinstance(result.staff_panel_message.view, StaffPanelView)
     assert len(result.staff_panel_message.view.children) == 4
+
+
+@pytest.mark.asyncio
+async def test_submit_draft_ticket_bootstraps_snapshot_history_when_snapshot_service_is_attached(
+    prepared_submit_context,
+) -> None:
+    database = prepared_submit_context["database"]
+    channel = prepared_submit_context["channel"]
+    creator = prepared_submit_context["creator"]
+    welcome_message = prepared_submit_context["welcome_message"]
+    snapshot_service = FakeSnapshotService()
+    snapshot_service.database = database
+    service = SubmitService(database, snapshot_service=snapshot_service)
+
+    result = await service.submit_draft_ticket(
+        channel,
+        actor_id=creator.id,
+        requested_title="Login fails badly",
+        welcome_message=welcome_message,
+    )
+    stored = TicketRepository(database).get_by_ticket_id(result.ticket.ticket_id)
+
+    assert len(snapshot_service.calls) == 1
+    assert snapshot_service.calls[0]["channel"] is channel
+    assert stored is not None
+    assert stored.snapshot_bootstrapped_at == "2024-01-01T01:10:00+00:00"
+    assert stored.message_count == 1
 
 
 @pytest.mark.asyncio

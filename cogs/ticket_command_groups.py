@@ -19,3 +19,9 @@ draft_group = app_commands.Group(
     description="draft ticket 操作",
     parent=ticket_group,
 )
+
+notes_group = app_commands.Group(
+    name="notes",
+    description="ticket 内部备注",
+    parent=ticket_group,
+)

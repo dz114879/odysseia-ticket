@@ -135,7 +135,7 @@ class ArchiveService:
                     archive_sent = True
 
             if ticket.status is TicketStatus.ARCHIVE_SENT:
-                source_channel = await self._resolve_channel(ticket.channel_id)
+                source_channel, channel_missing = await self._resolve_channel_for_deletion(ticket.channel_id)
                 if source_channel is not None:
                     delete = getattr(source_channel, "delete", None)
                     if delete is None:
@@ -149,6 +149,13 @@ class ArchiveService:
                             exc_info=True,
                         )
                         return self._build_result(ticket, archive_sent=archive_sent)
+                elif not channel_missing:
+                    self.logger.warning(
+                        "Skipping channel deletion because source channel could not be resolved. ticket_id=%s channel_id=%s",
+                        ticket.ticket_id,
+                        ticket.channel_id,
+                    )
+                    return self._build_result(ticket, archive_sent=archive_sent)
                 ticket = self.ticket_repository.update(ticket.ticket_id, status=TicketStatus.CHANNEL_DELETED) or ticket
                 channel_deleted = True
 
@@ -215,6 +222,34 @@ class ArchiveService:
                 exc_info=True,
             )
             return None
+
+    async def _resolve_channel_for_deletion(self, channel_id: int | None) -> tuple[Any | None, bool]:
+        if channel_id is None or self.bot is None:
+            return None, False
+
+        channel = getattr(self.bot, "get_channel", lambda _channel_id: None)(channel_id)
+        if channel is not None:
+            return channel, False
+
+        fetch_channel = getattr(self.bot, "fetch_channel", None)
+        if fetch_channel is None:
+            return None, False
+
+        try:
+            return await fetch_channel(channel_id), False
+        except Exception as exc:
+            if self._is_channel_not_found(exc):
+                return None, True
+            self.logger.warning(
+                "Failed to resolve channel before deletion. channel_id=%s",
+                channel_id,
+                exc_info=True,
+            )
+            return None, False
+
+    @staticmethod
+    def _is_channel_not_found(exc: Exception) -> bool:
+        return getattr(exc, "status", None) == 404 or exc.__class__.__name__ == "NotFound"
 
     def _mark_archive_failed(self, ticket: TicketRecord, *, reason: str) -> TicketRecord:
         self.logger.warning("Archive failed. ticket_id=%s reason=%s", ticket.ticket_id, reason)

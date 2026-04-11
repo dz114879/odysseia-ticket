@@ -14,13 +14,22 @@ from runtime.cooldowns import CooldownManager
 from runtime.debounce import DebounceManager
 from runtime.locks import LockManager
 from runtime.scheduler import BackgroundScheduler
+from services.archive_render_service import ArchiveRenderService
+from services.archive_service import ArchiveService
+from services.cleanup_service import CleanupService
 from services.close_service import CloseService
 from services.draft_timeout_service import DraftTimeoutService
 from services.logging_service import LoggingService
 from services.moderation_service import ModerationService
+from services.notes_service import NotesService
 from services.sleep_service import SleepService
+from services.snapshot_query_service import SnapshotQueryService
+from services.snapshot_service import SnapshotService
 from services.staff_panel_service import StaffPanelService
 from services.transfer_service import TransferService
+from storage.file_store import TicketFileStore
+from storage.notes_store import NotesStore
+from storage.snapshot_store import SnapshotStore
 
 
 @dataclass(slots=True)
@@ -39,6 +48,9 @@ class BootstrapResources:
     moderation_service: ModerationService
     transfer_service: TransferService
     close_service: CloseService
+    snapshot_service: SnapshotService
+    snapshot_query_service: SnapshotQueryService
+    notes_service: NotesService
 
 
 class BootstrapService:
@@ -59,6 +71,9 @@ class BootstrapService:
         self.moderation_service: ModerationService | None = None
         self.transfer_service: TransferService | None = None
         self.close_service: CloseService | None = None
+        self.snapshot_service: SnapshotService | None = None
+        self.snapshot_query_service: SnapshotQueryService | None = None
+        self.notes_service: NotesService | None = None
 
     async def bootstrap(self) -> BootstrapResources:
         if self.resources is not None:
@@ -79,6 +94,38 @@ class BootstrapService:
         self.cooldown_manager = CooldownManager()
         self.debounce_manager = DebounceManager(self.logging_service.child("debounce"))
         self.cache = RuntimeCacheStore()
+
+        file_store = TicketFileStore(STORAGE_DIR)
+        snapshot_store = SnapshotStore(
+            file_store=file_store,
+            logger=self.logging_service.child("snapshot-store"),
+        )
+        notes_store = NotesStore(
+            file_store=file_store,
+            logger=self.logging_service.child("notes-store"),
+        )
+        self.snapshot_query_service = SnapshotQueryService(snapshot_store=snapshot_store)
+        self.snapshot_service = SnapshotService(
+            self.database,
+            snapshot_store=snapshot_store,
+            lock_manager=self.lock_manager,
+            cache=self.cache,
+            logging_service=self.logging_service,
+            logger=self.logging_service.child("snapshot"),
+        )
+        self.notes_service = NotesService(
+            notes_store=notes_store,
+            lock_manager=self.lock_manager,
+            logger=self.logging_service.child("notes"),
+        )
+        restore_report = await self.snapshot_service.restore_runtime_state()
+        if restore_report.tickets_restored:
+            self.logging_service.log_local_info(
+                "Restored snapshot runtime cache for %s ticket(s), cached_messages=%s.",
+                restore_report.tickets_restored,
+                restore_report.cached_messages,
+            )
+
         self.draft_timeout_service = DraftTimeoutService(
             self.database,
             bot=self.bot,
@@ -110,11 +157,26 @@ class BootstrapService:
             logging_service=self.logging_service,
             logger=self.logging_service.child("transfer"),
         )
+        archive_service = ArchiveService(
+            self.database,
+            bot=self.bot,
+            lock_manager=self.lock_manager,
+            render_service=ArchiveRenderService(
+                snapshot_query_service=self.snapshot_query_service,
+            ),
+            cleanup_service=CleanupService(
+                self.database,
+                storage_dir=STORAGE_DIR,
+                cache=self.cache,
+            ),
+            logger=self.logging_service.child("archive"),
+        )
         self.close_service = CloseService(
             self.database,
             bot=self.bot,
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
+            archive_service=archive_service,
             logger=self.logging_service.child("close"),
         )
 
@@ -161,6 +223,9 @@ class BootstrapService:
             moderation_service=self.moderation_service,
             transfer_service=self.transfer_service,
             close_service=self.close_service,
+            snapshot_service=self.snapshot_service,
+            snapshot_query_service=self.snapshot_query_service,
+            notes_service=self.notes_service,
         )
 
         self.logging_service.log_local_info(
