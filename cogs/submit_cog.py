@@ -69,6 +69,7 @@ class SubmitCog(commands.Cog):
             InvalidTicketStateError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await self._send_ephemeral(interaction, str(exc))
             return

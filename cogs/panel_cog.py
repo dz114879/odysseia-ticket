@@ -54,7 +54,7 @@ class PanelCog(commands.Cog):
             await self._ensure_panel_permission(interaction)
             channel = self._require_sendable_channel(interaction)
             result = await self.panel_service.create_panel(channel, created_by=interaction.user.id)
-        except (PermissionDeniedError, ValidationError) as exc:
+        except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
             await self._send_ephemeral(interaction, str(exc))
             return
 
@@ -71,7 +71,7 @@ class PanelCog(commands.Cog):
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
             result = await self.panel_service.refresh_active_panel(guild.id)
-        except (PermissionDeniedError, ValidationError) as exc:
+        except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
             await self._send_ephemeral(interaction, str(exc))
             return
 
@@ -99,7 +99,7 @@ class PanelCog(commands.Cog):
                 guild.id,
                 delete_message=delete_message,
             )
-        except (PermissionDeniedError, ValidationError) as exc:
+        except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
             await self._send_ephemeral(interaction, str(exc))
             return
 

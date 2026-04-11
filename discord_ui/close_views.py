@@ -68,6 +68,7 @@ class CloseRequestView(discord.ui.View):
             StaleInteractionError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return
@@ -98,6 +99,7 @@ class CloseRequestView(discord.ui.View):
             StaleInteractionError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return

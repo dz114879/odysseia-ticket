@@ -78,6 +78,7 @@ class DraftSubmitTitleModal(discord.ui.Modal, title="提交前补充标题"):
             InvalidTicketStateError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return
@@ -118,6 +119,7 @@ class DraftSubmitButton(discord.ui.Button):
             InvalidTicketStateError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return

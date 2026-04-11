@@ -67,7 +67,7 @@ class AdminCog(commands.Cog):
                 ticket_category_channel_id=ticket_category.id,
                 admin_role_id=admin_role.id,
             )
-        except (PermissionDeniedError, ValidationError) as exc:
+        except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
             await self._send_ephemeral(interaction, str(exc))
             return
 

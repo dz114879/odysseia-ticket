@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any
 from collections.abc import Iterable
@@ -16,6 +17,9 @@ class StaffPermissionUpdate:
     target: Any
     overwrite: discord.PermissionOverwrite
     reason: str
+
+
+_logger = logging.getLogger(__name__)
 
 
 class StaffPermissionService:
@@ -69,11 +73,21 @@ class StaffPermissionService:
             muted_reason=muted_reason,
         )
         for update in updates:
-            await set_permissions(
-                update.target,
-                overwrite=update.overwrite,
-                reason=update.reason,
-            )
+            try:
+                await set_permissions(
+                    update.target,
+                    overwrite=update.overwrite,
+                    reason=update.reason,
+                )
+            except discord.HTTPException:  # noqa: PERF203
+                _logger.warning(
+                    "set_permissions failed for target %s (id=%s) in channel %s: %s",
+                    update.target,
+                    getattr(update.target, "id", "?"),
+                    getattr(channel, "id", "?"),
+                    update.reason,
+                    exc_info=True,
+                )
 
     async def apply_staff_overwrite_plan(
         self,
@@ -109,11 +123,21 @@ class StaffPermissionService:
             strict_claimer_reason=strict_claimer_reason,
         )
         for update in updates:
-            await set_permissions(
-                update.target,
-                overwrite=update.overwrite,
-                reason=update.reason,
-            )
+            try:
+                await set_permissions(
+                    update.target,
+                    overwrite=update.overwrite,
+                    reason=update.reason,
+                )
+            except discord.HTTPException:  # noqa: PERF203
+                _logger.warning(
+                    "set_permissions failed for target %s (id=%s) in channel %s: %s",
+                    update.target,
+                    getattr(update.target, "id", "?"),
+                    getattr(channel, "id", "?"),
+                    update.reason,
+                    exc_info=True,
+                )
 
     async def apply_participant_overwrite(
         self,
@@ -126,11 +150,20 @@ class StaffPermissionService:
         set_permissions = getattr(channel, "set_permissions", None)
         if set_permissions is None:
             return
-        await set_permissions(
-            target,
-            overwrite=self.build_participant_overwrite(can_send=can_send),
-            reason=reason,
-        )
+        try:
+            await set_permissions(
+                target,
+                overwrite=self.build_participant_overwrite(can_send=can_send),
+                reason=reason,
+            )
+        except discord.HTTPException:
+            _logger.warning(
+                "set_permissions failed for participant %s (id=%s): %s",
+                target,
+                getattr(target, "id", "?"),
+                reason,
+                exc_info=True,
+            )
 
     def build_ticket_permission_plan(
         self,

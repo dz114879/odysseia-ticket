@@ -71,6 +71,7 @@ class StaffClaimButton(discord.ui.Button):
             StaleInteractionError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return
@@ -105,6 +106,7 @@ class StaffUnclaimButton(discord.ui.Button):
             StaleInteractionError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return
@@ -162,6 +164,7 @@ class StaffPrioritySelect(discord.ui.Select):
             StaleInteractionError,
             PermissionDeniedError,
             ValidationError,
+            discord.HTTPException,
         ) as exc:
             await _send_ephemeral(interaction, str(exc))
             return

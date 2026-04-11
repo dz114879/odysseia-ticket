@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from config.env import EnvSettings, load_env_settings
@@ -39,6 +41,7 @@ class TicketBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         self.resources = await self.bootstrap_service.bootstrap()
+        self.tree.on_error = self._on_tree_error
         await self._load_extensions()
         await self._restore_active_panel_views()
 
@@ -75,9 +78,19 @@ class TicketBot(commands.Bot):
 
     async def on_message(self, message: discord.Message) -> None:
         if self.resources is not None:
-            await self.resources.sleep_service.handle_message(message)
-            await self.resources.draft_timeout_service.handle_message(message)
-            await self.resources.snapshot_service.handle_message(message)
+            for handler in (
+                self.resources.sleep_service.handle_message,
+                self.resources.draft_timeout_service.handle_message,
+                self.resources.snapshot_service.handle_message,
+            ):
+                try:
+                    await handler(message)
+                except Exception:  # noqa: PERF203
+                    self.resources.logging_service.log_local_warning(
+                        "on_message handler failed: %s",
+                        handler.__qualname__,
+                        exc_info=True,
+                    )
 
         await self.process_commands(message)
 
@@ -111,6 +124,35 @@ class TicketBot(commands.Bot):
             channel_id=getattr(channel, "id", None),
             guild_id=getattr(getattr(channel, "guild", None), "id", None),
         )
+
+    async def _on_tree_error(
+        self,
+        interaction: discord.Interaction,
+        error: app_commands.AppCommandError,
+    ) -> None:
+        original = error.__cause__ if isinstance(error, app_commands.CommandInvokeError) else error
+
+        if isinstance(original, discord.Forbidden):
+            user_message = f"Discord 权限不足：{original.text}"
+        elif isinstance(original, discord.HTTPException):
+            user_message = f"Discord API 错误（{original.status}）：{original.text}"
+        else:
+            user_message = "处理命令时发生内部错误，请稍后重试。"
+
+        logger = logging.getLogger(__name__)
+        logger.warning("Unhandled app command error: %s", original, exc_info=original)
+
+        await self._safe_send_error(interaction, user_message)
+
+    @staticmethod
+    async def _safe_send_error(interaction: discord.Interaction, content: str) -> None:
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(content, ephemeral=True)
+            else:
+                await interaction.response.send_message(content, ephemeral=True)
+        except discord.HTTPException:
+            pass
 
     async def _load_extensions(self) -> None:
         cogs_dir = BASE_DIR / "cogs"
