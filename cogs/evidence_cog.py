@@ -24,6 +24,12 @@ class EvidenceCog(commands.Cog):
         self.notes_service = resources.notes_service
         self.access_service = TicketAccessService(resources.database)
 
+    async def cog_load(self) -> None:
+        self.history_command.binding = self
+        self.recycle_bin_command.binding = self
+        self.notes_add_command.binding = self
+        self.notes_check_command.binding = self
+
     @ticket_group.command(name="history", description="查看当前 ticket 中指定消息的快照时间线")
     @app_commands.guild_only()
     @app_commands.describe(message_id="要查询的 Discord 消息 ID")

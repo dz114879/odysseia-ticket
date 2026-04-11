@@ -23,6 +23,11 @@ class PanelCog(commands.Cog):
         self.guild_config_service = GuildConfigService(resources.database)
         self.panel_service = PanelService(resources.database, bot=bot)
 
+    async def cog_load(self) -> None:
+        self.create_panel_command.binding = self
+        self.refresh_panel_command.binding = self
+        self.remove_panel_command.binding = self
+
     @panel_group.command(name="create", description="在当前频道发送公开 Ticket 面板")
     @app_commands.guild_only()
     async def create_panel_command(self, interaction: discord.Interaction) -> None:

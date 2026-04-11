@@ -39,6 +39,9 @@ class SubmitCog(commands.Cog):
             bot.add_view(DraftWelcomeView())
             bot._draft_welcome_view_registered = True
 
+    async def cog_load(self) -> None:
+        self.submit_command.binding = self
+
     @ticket_group.command(name="submit", description="提交当前 draft ticket 给 staff 处理")
     @app_commands.guild_only()
     async def submit_command(self, interaction: discord.Interaction) -> None:

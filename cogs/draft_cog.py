@@ -29,6 +29,10 @@ class DraftCog(commands.Cog):
             lock_manager=getattr(resources, "lock_manager", None),
         )
 
+    async def cog_load(self) -> None:
+        self.rename_draft_command.binding = self
+        self.abandon_draft_command.binding = self
+
     @draft_group.command(name="rename", description="修改当前 draft ticket 的频道标题")
     @app_commands.guild_only()
     @app_commands.describe(title="新的 draft 标题")

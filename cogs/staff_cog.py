@@ -84,6 +84,19 @@ class StaffCog(commands.Cog):
             bot.add_view(StaffPanelView())
             bot._staff_panel_view_registered = True
 
+    async def cog_load(self) -> None:
+        self.claim_command.binding = self
+        self.unclaim_command.binding = self
+        self.transfer_claim_command.binding = self
+        self.mute_command.binding = self
+        self.unmute_command.binding = self
+        self.priority_command.binding = self
+        self.sleep_command.binding = self
+        self.rename_command.binding = self
+        self.transfer_command.binding = self
+        self.untransfer_command.binding = self
+        self.help_command.binding = self
+
     @ticket_group.command(name="claim", description="认领当前 submitted ticket")
     @app_commands.guild_only()
     async def claim_command(self, interaction: discord.Interaction) -> None:

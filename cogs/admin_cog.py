@@ -21,6 +21,9 @@ class AdminCog(commands.Cog):
         self.logging_service = resources.logging_service
         self.setup_service = SetupService(resources.database)
 
+    async def cog_load(self) -> None:
+        self.setup_command.binding = self
+
     @ticket_group.command(name="setup", description="初始化当前服务器的 Ticket 配置")
     @app_commands.guild_only()
     @app_commands.describe(

@@ -40,6 +40,10 @@ class CloseCog(commands.Cog):
             close_service=self.close_service,
         )
 
+    async def cog_load(self) -> None:
+        self.close_command.binding = self
+        self.close_cancel_command.binding = self
+
     @ticket_group.command(name="close", description="关闭当前 ticket；staff 会直接进入 closing，创建者会发起关闭请求")
     @app_commands.guild_only()
     @app_commands.describe(reason="关闭或请求关闭的原因（可选）")
