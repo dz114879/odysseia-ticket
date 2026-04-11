@@ -367,6 +367,39 @@ async def test_transfer_ticket_from_sleep_preserves_sleep_priority_metadata(prep
 
 
 @pytest.mark.asyncio
+async def test_transfer_ticket_from_sleep_rejects_when_active_capacity_is_full(prepared_transfer_context) -> None:
+    database = prepared_transfer_context["database"]
+    channel = prepared_transfer_context["channel"]
+    staff_member = prepared_transfer_context["staff_member"]
+    ticket_repository = prepared_transfer_context["ticket_repository"]
+    GuildRepository(database).update_config(1, max_open_tickets=1)
+    ticket_repository.update(
+        prepared_transfer_context["ticket"].ticket_id,
+        status=TicketStatus.SLEEP,
+        priority=TicketPriority.SLEEP,
+        priority_before_sleep=TicketPriority.HIGH,
+    )
+    ticket_repository.create(
+        TicketRecord(
+            ticket_id="1-support-0002",
+            guild_id=1,
+            creator_id=202,
+            category_key="support",
+            channel_id=9002,
+            status=TicketStatus.SUBMITTED,
+        )
+    )
+    service = TransferService(database, lock_manager=LockManager())
+
+    with pytest.raises(ValidationError, match="active 容量已满（1/1）"):
+        await service.transfer_ticket(channel, actor=staff_member, target_category_key="billing")
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+    assert stored is not None and stored.status is TicketStatus.SLEEP
+    assert channel.sent_messages == []
+
+
+@pytest.mark.asyncio
 async def test_transfer_ticket_rejects_unknown_target_category(prepared_transfer_context) -> None:
     service = TransferService(prepared_transfer_context["database"], lock_manager=LockManager())
 

@@ -16,12 +16,14 @@ from runtime.locks import LockManager
 from runtime.scheduler import BackgroundScheduler
 from services.archive_render_service import ArchiveRenderService
 from services.archive_service import ArchiveService
+from services.capacity_service import CapacityService
 from services.cleanup_service import CleanupService
 from services.close_service import CloseService
 from services.draft_timeout_service import DraftTimeoutService
 from services.logging_service import LoggingService
 from services.moderation_service import ModerationService
 from services.notes_service import NotesService
+from services.queue_service import QueueService
 from services.sleep_service import SleepService
 from services.snapshot_query_service import SnapshotQueryService
 from services.snapshot_service import SnapshotService
@@ -44,6 +46,8 @@ class BootstrapResources:
     debounce_manager: DebounceManager
     cache: RuntimeCacheStore
     draft_timeout_service: DraftTimeoutService
+    capacity_service: CapacityService
+    queue_service: QueueService
     sleep_service: SleepService
     moderation_service: ModerationService
     transfer_service: TransferService
@@ -67,6 +71,8 @@ class BootstrapService:
         self.debounce_manager: DebounceManager | None = None
         self.cache: RuntimeCacheStore | None = None
         self.draft_timeout_service: DraftTimeoutService | None = None
+        self.capacity_service: CapacityService | None = None
+        self.queue_service: QueueService | None = None
         self.sleep_service: SleepService | None = None
         self.moderation_service: ModerationService | None = None
         self.transfer_service: TransferService | None = None
@@ -137,10 +143,21 @@ class BootstrapService:
             bot=self.bot,
             debounce_manager=self.debounce_manager,
         )
+        self.capacity_service = CapacityService(self.database)
+        self.queue_service = QueueService(
+            self.database,
+            bot=self.bot,
+            capacity_service=self.capacity_service,
+            lock_manager=self.lock_manager,
+            snapshot_service=self.snapshot_service,
+            logger=self.logging_service.child("queue"),
+        )
         self.sleep_service = SleepService(
             self.database,
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
+            capacity_service=self.capacity_service,
+            queue_service=self.queue_service,
         )
         self.moderation_service = ModerationService(
             self.database,
@@ -155,6 +172,8 @@ class BootstrapService:
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
             logging_service=self.logging_service,
+            capacity_service=self.capacity_service,
+            queue_service=self.queue_service,
             logger=self.logging_service.child("transfer"),
         )
         archive_service = ArchiveService(
@@ -169,6 +188,8 @@ class BootstrapService:
                 storage_dir=STORAGE_DIR,
                 cache=self.cache,
             ),
+            capacity_service=self.capacity_service,
+            queue_service=self.queue_service,
             logger=self.logging_service.child("archive"),
         )
         self.close_service = CloseService(
@@ -177,6 +198,8 @@ class BootstrapService:
             lock_manager=self.lock_manager,
             staff_panel_service=staff_panel_service,
             archive_service=archive_service,
+            capacity_service=self.capacity_service,
+            queue_service=self.queue_service,
             logger=self.logging_service.child("close"),
         )
 
@@ -206,6 +229,10 @@ class BootstrapService:
             "ticket.close_archive_sweep",
             self._run_close_archive_sweep,
         )
+        self.scheduler.register_handler(
+            "ticket.queue_sweep",
+            self._run_queue_sweep,
+        )
         await self.scheduler.start()
 
         self.resources = BootstrapResources(
@@ -219,6 +246,8 @@ class BootstrapService:
             debounce_manager=self.debounce_manager,
             cache=self.cache,
             draft_timeout_service=self.draft_timeout_service,
+            capacity_service=self.capacity_service,
+            queue_service=self.queue_service,
             sleep_service=self.sleep_service,
             moderation_service=self.moderation_service,
             transfer_service=self.transfer_service,
@@ -328,5 +357,16 @@ class BootstrapService:
         if outcomes:
             self.logging_service.log_local_info(
                 "Processed %s ticket close/archive flow(s).",
+                len(outcomes),
+            )
+
+    async def _run_queue_sweep(self) -> None:
+        if self.queue_service is None or self.logging_service is None:
+            return
+
+        outcomes = await self.queue_service.sweep_queued_tickets()
+        if outcomes:
+            self.logging_service.log_local_info(
+                "Processed %s queued ticket flow(s).",
                 len(outcomes),
             )

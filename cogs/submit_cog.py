@@ -31,6 +31,8 @@ class SubmitCog(commands.Cog):
             resources.database,
             lock_manager=getattr(resources, "lock_manager", None),
             snapshot_service=getattr(resources, "snapshot_service", None),
+            capacity_service=getattr(resources, "capacity_service", None),
+            queue_service=getattr(resources, "queue_service", None),
         )
 
         if not getattr(bot, "_draft_welcome_view_registered", False):
@@ -69,9 +71,9 @@ class SubmitCog(commands.Cog):
             return
 
         self.logging_service.log_local_info(
-            "Draft submitted. ticket_id=%s submitted=%s renamed=%s",
+            "Draft submit handled. ticket_id=%s outcome=%s renamed=%s",
             result.ticket.ticket_id,
-            result.submitted,
+            result.outcome,
             result.channel_name_changed,
         )
         await self._send_ephemeral(interaction, build_submit_feedback_message(result))

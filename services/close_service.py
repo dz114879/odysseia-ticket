@@ -16,6 +16,8 @@ from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.archive_service import ArchivePipelineResult, ArchiveService
+from services.capacity_service import CapacityService
+from services.queue_service import QueueService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
@@ -57,6 +59,8 @@ class CloseService:
         staff_panel_service: StaffPanelService | None = None,
         archive_service: ArchiveService | None = None,
         logger: logging.Logger | None = None,
+        capacity_service: CapacityService | None = None,
+        queue_service: QueueService | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
@@ -67,6 +71,11 @@ class CloseService:
         self.permission_service = permission_service or StaffPermissionService()
         self.staff_panel_service = staff_panel_service
         self.logger = logger or logging.getLogger(__name__)
+        self.capacity_service = capacity_service or CapacityService(
+            database,
+            ticket_repository=self.ticket_repository,
+        )
+        self.queue_service = queue_service
         self.guard_service = guard_service or StaffGuardService(
             database,
             guild_repository=self.guild_repository,
@@ -76,6 +85,8 @@ class CloseService:
             database,
             bot=bot,
             guild_repository=self.guild_repository,
+            capacity_service=self.capacity_service,
+            queue_service=self.queue_service,
             ticket_repository=self.ticket_repository,
             lock_manager=lock_manager,
             logger=self.logger.getChild("archive"),
@@ -123,6 +134,8 @@ class CloseService:
 
             if context.ticket.status not in {TicketStatus.SUBMITTED, TicketStatus.SLEEP}:
                 raise InvalidTicketStateError("当前 ticket 仅在 submitted / sleep 状态可关闭。")
+
+            self._assert_sleep_capacity_available(context=context)
 
             normalized_reason = self._normalize_reason(reason)
             close_started_at = datetime.now(timezone.utc)
@@ -220,6 +233,8 @@ class CloseService:
             )
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(updated_ticket.ticket_id)
+            if self.capacity_service.released_capacity(context.ticket.status, restored_status):
+                await self._trigger_queue_fill(context.ticket.guild_id)
 
             return CloseRevokeResult(
                 ticket=updated_ticket,
@@ -395,6 +410,27 @@ class CloseService:
         if not callable(get_member):
             return None
         return get_member(user_id)
+
+    async def _trigger_queue_fill(self, guild_id: int) -> None:
+        if self.queue_service is None:
+            return
+        await self.queue_service.process_next_queued_ticket(guild_id)
+
+    def _assert_sleep_capacity_available(self, *, context: StaffTicketContext) -> None:
+        ticket = context.ticket
+        if ticket.status is not TicketStatus.SLEEP:
+            return
+
+        capacity = self.capacity_service.build_snapshot(
+            guild_id=ticket.guild_id,
+            max_open_tickets=context.config.max_open_tickets,
+        )
+        if capacity.has_capacity:
+            return
+
+        raise ValidationError(
+            f"当前 active 容量已满（{capacity.active_count}/{context.config.max_open_tickets}），暂时无法从 sleep 发起 close。"
+        )
 
     @staticmethod
     def _normalize_reason(reason: str | None) -> str | None:

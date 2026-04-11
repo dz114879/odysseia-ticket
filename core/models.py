@@ -35,6 +35,7 @@ class TicketRecord:
     archived_at: str | None = None
     message_count: int | None = None
     snapshot_bootstrapped_at: str | None = None
+    queued_at: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

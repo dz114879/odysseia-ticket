@@ -11,12 +11,12 @@ from db.connection import DatabaseManager
 from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
+from services.capacity_service import CapacityService
 from services.priority_service import PRIORITY_CHANNEL_PREFIXES, PriorityService
+from services.queue_service import QueueService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
-
-_ACTIVE_CAPACITY_STATUSES = (TicketStatus.SUBMITTED, TicketStatus.TRANSFERRING)
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +59,8 @@ class SleepService:
         ticket_mute_repository: TicketMuteRepository | None = None,
         permission_service: StaffPermissionService | None = None,
         staff_panel_service: StaffPanelService | None = None,
+        capacity_service: CapacityService | None = None,
+        queue_service: QueueService | None = None,
     ) -> None:
         self.database = database
         self.ticket_repository = ticket_repository or TicketRepository(database)
@@ -70,6 +72,11 @@ class SleepService:
         )
         self.ticket_mute_repository = ticket_mute_repository or TicketMuteRepository(database)
         self.permission_service = permission_service or StaffPermissionService()
+        self.capacity_service = capacity_service or CapacityService(
+            database,
+            ticket_repository=self.ticket_repository,
+        )
+        self.queue_service = queue_service
 
     def inspect_sleep_request(
         self,
@@ -168,6 +175,7 @@ class SleepService:
             )
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(ticket.ticket_id)
+            await self._trigger_queue_fill(ticket.guild_id)
 
             return SleepMutationResult(
                 ticket=updated_ticket,
@@ -342,9 +350,12 @@ class SleepService:
         return StaffTicketContext(ticket=ticket, config=config, category=category)
 
     def _has_wake_capacity(self, *, ticket: Any, max_open_tickets: int) -> tuple[bool, int]:
-        active_tickets = self.ticket_repository.list_by_guild(ticket.guild_id, statuses=_ACTIVE_CAPACITY_STATUSES)
-        active_count = sum(1 for active_ticket in active_tickets if active_ticket.ticket_id != ticket.ticket_id)
-        return active_count < max_open_tickets, active_count
+        snapshot = self.capacity_service.build_snapshot(
+            guild_id=ticket.guild_id,
+            max_open_tickets=max_open_tickets,
+            exclude_ticket_id=ticket.ticket_id,
+        )
+        return snapshot.has_capacity, snapshot.active_count
 
     async def _sync_ticket_permissions(
         self,
@@ -376,6 +387,11 @@ class SleepService:
         guild = getattr(channel, "guild", None)
         get_member = getattr(guild, "get_member", None)
         return get_member(user_id) if callable(get_member) else None
+
+    async def _trigger_queue_fill(self, guild_id: int) -> None:
+        if self.queue_service is None:
+            return
+        await self.queue_service.process_next_queued_ticket(guild_id)
 
     @asynccontextmanager
     async def _acquire_channel_lock(self, channel_id: int) -> AsyncIterator[None]:

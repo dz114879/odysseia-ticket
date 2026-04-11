@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.errors import ValidationError
 from core.enums import ClaimMode, TicketStatus
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketMuteRecord, TicketRecord
 from db.repositories.guild_repository import GuildRepository
@@ -308,6 +309,39 @@ async def test_initiate_close_updates_ticket_locks_permissions_and_posts_notice(
     assert channel.sent_messages
     assert channel.sent_messages[0].embed.title == "🔒 Ticket 正在关闭中"
     assert staff_panel_service.requested_ticket_ids == [stored.ticket_id]
+
+
+@pytest.mark.asyncio
+async def test_initiate_close_from_sleep_rejects_when_active_capacity_is_full(
+    prepared_close_context,
+    tmp_path,
+) -> None:
+    close_service, _, staff_panel_service, _ = build_close_service(prepared_close_context, tmp_path)
+    database = prepared_close_context["database"]
+    channel = prepared_close_context["channel"]
+    staff_member = prepared_close_context["staff_member"]
+    ticket_repository = prepared_close_context["ticket_repository"]
+    GuildRepository(database).update_config(1, max_open_tickets=1)
+    ticket_repository.update(prepared_close_context["ticket"].ticket_id, status=TicketStatus.SLEEP)
+    ticket_repository.create(
+        TicketRecord(
+            ticket_id="1-support-0002",
+            guild_id=1,
+            creator_id=202,
+            category_key="support",
+            channel_id=9002,
+            status=TicketStatus.SUBMITTED,
+        )
+    )
+
+    with pytest.raises(ValidationError, match="active 容量已满（1/1）"):
+        await close_service.initiate_close(channel, actor=staff_member, reason="准备直接关闭")
+
+    stored = ticket_repository.get_by_channel_id(channel.id)
+    assert stored is not None and stored.status is TicketStatus.SLEEP
+    assert channel.sent_messages == []
+    assert channel.permission_calls == []
+    assert staff_panel_service.requested_ticket_ids == []
 
 
 @pytest.mark.asyncio

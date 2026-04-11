@@ -130,6 +130,15 @@ def prepared_sleep_context(migrated_database):
     }
 
 
+class FakeQueueService:
+    def __init__(self) -> None:
+        self.requested_guild_ids: list[int] = []
+
+    async def process_next_queued_ticket(self, guild_id: int):
+        self.requested_guild_ids.append(guild_id)
+        return None
+
+
 def test_inspect_sleep_request_returns_previous_priority_and_strict_mode(prepared_sleep_context) -> None:
     database = prepared_sleep_context["database"]
     channel = prepared_sleep_context["channel"]
@@ -200,6 +209,23 @@ async def test_sleep_ticket_updates_status_priority_channel_name_and_panel_refre
     assert "已将 ticket `1-support-0001` 挂起" in channel.sent_messages[0].content
     assert "睡前优先级：高 🔴" in channel.sent_messages[0].content
     assert staff_panel_service.requested_ticket_ids == [prepared_sleep_context["ticket"].ticket_id]
+
+
+@pytest.mark.asyncio
+async def test_sleep_ticket_triggers_queue_fill_after_releasing_capacity(prepared_sleep_context) -> None:
+    database = prepared_sleep_context["database"]
+    channel = prepared_sleep_context["channel"]
+    staff_member = prepared_sleep_context["staff_member"]
+    queue_service = FakeQueueService()
+    service = SleepService(
+        database,
+        lock_manager=LockManager(),
+        queue_service=queue_service,
+    )
+
+    await service.sleep_ticket(channel, actor=staff_member)
+
+    assert queue_service.requested_guild_ids == [1]
 
 
 @pytest.mark.asyncio

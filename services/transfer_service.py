@@ -16,7 +16,9 @@ from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
+from services.capacity_service import CapacityService
 from services.logging_service import LoggingService
+from services.queue_service import QueueService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
@@ -79,6 +81,8 @@ class TransferService:
         logger: logging.Logger | None = None,
         permission_service: StaffPermissionService | None = None,
         transfer_delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS,
+        capacity_service: CapacityService | None = None,
+        queue_service: QueueService | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
@@ -91,6 +95,11 @@ class TransferService:
         self.logger = logger or logging.getLogger(__name__)
         self.permission_service = permission_service or StaffPermissionService()
         self.transfer_delay_seconds = transfer_delay_seconds
+        self.capacity_service = capacity_service or CapacityService(
+            database,
+            ticket_repository=self.ticket_repository,
+        )
+        self.queue_service = queue_service
         self.guard_service = guard_service or StaffGuardService(
             database,
             guild_repository=self.guild_repository,
@@ -136,6 +145,7 @@ class TransferService:
         if not target_categories:
             raise ValidationError("当前服务器没有其他可转交的启用分类。")
 
+        self._assert_sleep_capacity_available(preparation_context=context)
         return TransferPreparationResult(
             context=context,
             target_categories=target_categories,
@@ -257,6 +267,9 @@ class TransferService:
             )
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(context.ticket.ticket_id)
+
+            if self.capacity_service.released_capacity(context.ticket.status, restored_status):
+                await self._trigger_queue_fill(context.ticket.guild_id)
 
             return TransferCancellationResult(
                 ticket=updated_ticket,
@@ -386,6 +399,9 @@ class TransferService:
                 executed_at=reference_time.isoformat(),
                 reason=ticket.transfer_reason,
             )
+
+            if self.capacity_service.released_capacity(ticket.status, restored_status):
+                await self._trigger_queue_fill(ticket.guild_id)
 
             return TransferExecutionResult(
                 ticket=updated_ticket,
@@ -518,6 +534,22 @@ class TransferService:
             raise ValidationError("当前服务器尚未完成 Ticket setup，无法执行 transfer。")
         return config
 
+    def _assert_sleep_capacity_available(self, *, preparation_context: StaffTicketContext) -> None:
+        ticket = preparation_context.ticket
+        if ticket.status is not TicketStatus.SLEEP:
+            return
+
+        capacity = self.capacity_service.build_snapshot(
+            guild_id=ticket.guild_id,
+            max_open_tickets=preparation_context.config.max_open_tickets,
+        )
+        if capacity.has_capacity:
+            return
+
+        raise ValidationError(
+            f"当前 active 容量已满（{capacity.active_count}/{preparation_context.config.max_open_tickets}），暂时无法从 sleep 发起 transfer。"
+        )
+
     @staticmethod
     def get_status_label(status: TicketStatus) -> str:
         labels = {
@@ -543,6 +575,11 @@ class TransferService:
             return await fetch_channel(channel_id)
         except Exception:
             return None
+
+    async def _trigger_queue_fill(self, guild_id: int) -> None:
+        if self.queue_service is None:
+            return
+        await self.queue_service.process_next_queued_ticket(guild_id)
 
     async def _sync_transfer_permissions(
         self,

@@ -16,7 +16,9 @@ from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.archive_render_service import ArchiveRenderResult, ArchiveRenderService
 from services.archive_send_service import ArchiveSendService
+from services.capacity_service import CapacityService
 from services.cleanup_service import CleanupService
+from services.queue_service import QueueService
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +45,8 @@ class ArchiveService:
         send_service: ArchiveSendService | None = None,
         cleanup_service: CleanupService | None = None,
         logger: logging.Logger | None = None,
+        capacity_service: CapacityService | None = None,
+        queue_service: QueueService | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
@@ -53,6 +57,11 @@ class ArchiveService:
         self.send_service = send_service or ArchiveSendService()
         self.cleanup_service = cleanup_service or CleanupService(database)
         self.logger = logger or logging.getLogger(__name__)
+        self.capacity_service = capacity_service or CapacityService(
+            database,
+            ticket_repository=self.ticket_repository,
+        )
+        self.queue_service = queue_service
 
     async def archive_ticket(
         self,
@@ -93,6 +102,7 @@ class ArchiveService:
                             ticket,
                             reason="archive channel or source channel is unavailable",
                         )
+                        await self._trigger_queue_fill(ticket.guild_id)
                         return self._build_result(failed_ticket)
 
                     archived_at = utc_now_iso()
@@ -117,6 +127,7 @@ class ArchiveService:
                             ticket,
                             reason=f"archive export failed: {exc}",
                         )
+                        await self._trigger_queue_fill(ticket.guild_id)
                         return self._build_result(failed_ticket)
 
                     ticket = self.ticket_repository.update(
@@ -157,6 +168,7 @@ class ArchiveService:
                     )
                     return self._build_result(ticket, archive_sent=archive_sent)
                 ticket = self.ticket_repository.update(ticket.ticket_id, status=TicketStatus.CHANNEL_DELETED) or ticket
+                await self._trigger_queue_fill(ticket.guild_id)
                 channel_deleted = True
 
             if ticket.status is TicketStatus.CHANNEL_DELETED:
@@ -294,6 +306,11 @@ class ArchiveService:
             cleaned_up=cleaned_up or ticket.status is TicketStatus.DONE,
             final_status=ticket.status,
         )
+
+    async def _trigger_queue_fill(self, guild_id: int) -> None:
+        if self.queue_service is None:
+            return
+        await self.queue_service.process_next_queued_ticket(guild_id)
 
     @asynccontextmanager
     async def _acquire_ticket_lock(self, ticket_id: str) -> AsyncIterator[None]:

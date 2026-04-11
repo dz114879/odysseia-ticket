@@ -18,6 +18,7 @@ class SubmissionContext:
     category: TicketCategoryConfig
     requires_title: bool
     already_submitted: bool = False
+    already_queued: bool = False
 
 
 class SubmissionGuardService:
@@ -46,6 +47,62 @@ class SubmissionGuardService:
         if ticket.creator_id != actor_id:
             raise PermissionDeniedError("只有当前 ticket 的创建者可以执行提交。")
 
+        config, category = self._load_submission_target(ticket, connection=connection)
+
+        if ticket.status is TicketStatus.SUBMITTED:
+            return SubmissionContext(
+                ticket=ticket,
+                config=config,
+                category=category,
+                requires_title=False,
+                already_submitted=True,
+            )
+        if ticket.status is TicketStatus.QUEUED:
+            return SubmissionContext(
+                ticket=ticket,
+                config=config,
+                category=category,
+                requires_title=False,
+                already_queued=True,
+            )
+        if ticket.status is not TicketStatus.DRAFT:
+            raise InvalidTicketStateError("当前 ticket 已不处于 draft 状态，无法执行提交。")
+
+        return SubmissionContext(
+            ticket=ticket,
+            config=config,
+            category=category,
+            requires_title=self.requires_title_completion(ticket=ticket, channel_name=channel_name),
+        )
+
+    def inspect_queued_promotion(
+        self,
+        *,
+        ticket_id: str,
+        channel_id: int,
+        connection: sqlite3.Connection | None = None,
+    ) -> SubmissionContext:
+        ticket = self.ticket_repository.get_by_ticket_id(ticket_id, connection=connection)
+        if ticket is None:
+            raise TicketNotFoundError("当前 ticket 不存在，无法执行排队出队。")
+        if ticket.channel_id != channel_id:
+            raise ValidationError("当前 queued ticket 的频道上下文已失效，无法执行自动出队。")
+        if ticket.status is not TicketStatus.QUEUED:
+            raise InvalidTicketStateError("当前 ticket 不处于 queued 状态，无法执行自动出队。")
+        config, category = self._load_submission_target(ticket, connection=connection)
+        return SubmissionContext(
+            ticket=ticket,
+            config=config,
+            category=category,
+            requires_title=False,
+        )
+
+    def _load_submission_target(
+        self,
+        ticket: TicketRecord,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> tuple[GuildConfigRecord, TicketCategoryConfig]:
         config = self.guild_repository.get_config(ticket.guild_id, connection=connection)
         if config is None or not config.is_initialized:
             raise ValidationError("当前服务器尚未完成 ticket setup，无法提交。")
@@ -57,24 +114,7 @@ class SubmissionGuardService:
         )
         if category is None:
             raise ValidationError("当前 ticket 的分类配置已缺失，无法继续提交。")
-
-        if ticket.status is TicketStatus.SUBMITTED:
-            return SubmissionContext(
-                ticket=ticket,
-                config=config,
-                category=category,
-                requires_title=False,
-                already_submitted=True,
-            )
-        if ticket.status is not TicketStatus.DRAFT:
-            raise InvalidTicketStateError("当前 ticket 已不处于 draft 状态，无法执行提交。")
-
-        return SubmissionContext(
-            ticket=ticket,
-            config=config,
-            category=category,
-            requires_title=self.requires_title_completion(ticket=ticket, channel_name=channel_name),
-        )
+        return config, category
 
     @staticmethod
     def requires_title_completion(*, ticket: TicketRecord, channel_name: str | None) -> bool:

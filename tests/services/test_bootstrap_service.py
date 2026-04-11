@@ -68,11 +68,14 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
         "ticket.transfer_execute_sweep",
         "ticket.mute_expire_sweep",
         "ticket.close_archive_sweep",
+        "ticket.queue_sweep",
     ]
     assert (bootstrap_module.STORAGE_DIR / "snapshots").exists() is True
     assert (bootstrap_module.STORAGE_DIR / "notes").exists() is True
     assert (bootstrap_module.STORAGE_DIR / "archives").exists() is True
     assert resources.draft_timeout_service is not None
+    assert resources.capacity_service is not None
+    assert resources.queue_service is not None
     assert resources.sleep_service is not None
     assert resources.moderation_service is not None
     assert resources.transfer_service is not None

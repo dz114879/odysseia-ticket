@@ -50,6 +50,7 @@ class TicketRepository(BaseRepository):
             archived_at=row["archived_at"],
             message_count=row["message_count"],
             snapshot_bootstrapped_at=row["snapshot_bootstrapped_at"],
+            queued_at=row["queued_at"],
         )
 
     def create(
@@ -92,9 +93,10 @@ class TicketRepository(BaseRepository):
                     archive_message_id,
                     archived_at,
                     message_count,
-                    snapshot_bootstrapped_at
+                    snapshot_bootstrapped_at,
+                    queued_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -125,6 +127,7 @@ class TicketRepository(BaseRepository):
                     record.archived_at,
                     record.message_count,
                     record.snapshot_bootstrapped_at,
+                    record.queued_at,
                 ),
             )
         return TicketRecord(
@@ -156,6 +159,7 @@ class TicketRepository(BaseRepository):
             archived_at=record.archived_at,
             message_count=record.message_count,
             snapshot_bootstrapped_at=record.snapshot_bootstrapped_at,
+            queued_at=record.queued_at,
         )
 
     def upsert(
@@ -198,9 +202,10 @@ class TicketRepository(BaseRepository):
                     archive_message_id,
                     archived_at,
                     message_count,
-                    snapshot_bootstrapped_at
+                    snapshot_bootstrapped_at,
+                    queued_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -227,7 +232,8 @@ class TicketRepository(BaseRepository):
                     archive_message_id = excluded.archive_message_id,
                     archived_at = excluded.archived_at,
                     message_count = excluded.message_count,
-                    snapshot_bootstrapped_at = excluded.snapshot_bootstrapped_at;
+                    snapshot_bootstrapped_at = excluded.snapshot_bootstrapped_at,
+                    queued_at = excluded.queued_at;
                 """,
                 (
                     record.ticket_id,
@@ -258,6 +264,7 @@ class TicketRepository(BaseRepository):
                     record.archived_at,
                     record.message_count,
                     record.snapshot_bootstrapped_at,
+                    record.queued_at,
                 ),
             )
         return self.get_by_ticket_id(record.ticket_id, connection=connection) or TicketRecord(
@@ -289,6 +296,7 @@ class TicketRepository(BaseRepository):
             archived_at=record.archived_at,
             message_count=record.message_count,
             snapshot_bootstrapped_at=record.snapshot_bootstrapped_at,
+            queued_at=record.queued_at,
         )
 
     def get_by_ticket_id(
@@ -405,6 +413,21 @@ class TicketRepository(BaseRepository):
             rows = current_connection.execute(query, parameters).fetchall()
         return [self._row_to_record(row) for row in rows]
 
+    def list_queued_by_guild(
+        self,
+        guild_id: int,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> list[TicketRecord]:
+        query = (
+            "SELECT * FROM tickets "
+            "WHERE guild_id = ? AND status = ? "
+            "ORDER BY COALESCE(queued_at, created_at) ASC, created_at ASC, ticket_id ASC;"
+        )
+        with self.read_connection(connection) as current_connection:
+            rows = current_connection.execute(query, (guild_id, TicketStatus.QUEUED.value)).fetchall()
+        return [self._row_to_record(row) for row in rows]
+
     def update(
         self,
         ticket_id: str,
@@ -436,6 +459,7 @@ class TicketRepository(BaseRepository):
         archived_at: str | None | object = UNSET,
         message_count: int | None | object = UNSET,
         snapshot_bootstrapped_at: str | None | object = UNSET,
+        queued_at: str | None | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> TicketRecord | None:
         updates: dict[str, object] = {}
@@ -494,6 +518,8 @@ class TicketRepository(BaseRepository):
             updates["message_count"] = message_count
         if snapshot_bootstrapped_at is not UNSET:
             updates["snapshot_bootstrapped_at"] = snapshot_bootstrapped_at
+        if queued_at is not UNSET:
+            updates["queued_at"] = queued_at
 
         if updated_at is not UNSET:
             updates["updated_at"] = updated_at

@@ -212,6 +212,16 @@ _MIGRATION_V8_STATEMENTS = (
 )
 
 
+_MIGRATION_V9_STATEMENTS = (
+    "ALTER TABLE tickets ADD COLUMN queued_at TEXT;",
+    """
+    CREATE INDEX IF NOT EXISTS idx_tickets_queue_order
+        ON tickets (guild_id, queued_at, created_at, ticket_id)
+        WHERE status = 'queued';
+    """,
+)
+
+
 def _migration_v1_create_base_schema(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V1_STATEMENTS)
 
@@ -242,6 +252,10 @@ def _migration_v7_add_close_archive_tracking(connection: sqlite3.Connection) -> 
 
 def _migration_v8_add_snapshot_bootstrap_tracking(connection: sqlite3.Connection) -> None:
     _execute_statements(connection, _MIGRATION_V8_STATEMENTS)
+
+
+def _migration_v9_add_queue_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V9_STATEMENTS)
 
 
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
@@ -292,6 +306,11 @@ MIGRATIONS = [
         version=8,
         name="add_snapshot_bootstrap_tracking",
         operation=_migration_v8_add_snapshot_bootstrap_tracking,
+    ),
+    Migration(
+        version=9,
+        name="add_queue_tracking",
+        operation=_migration_v9_add_queue_tracking,
     ),
 ]
 

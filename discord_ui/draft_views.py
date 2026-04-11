@@ -23,18 +23,37 @@ def build_draft_submit_custom_id() -> str:
 
 
 def build_submit_feedback_message(result: SubmitDraftResult) -> str:
-    if not result.submitted:
+    if result.outcome == "already_submitted":
         return (
             "该 ticket 已经提交，无需重复操作。\n"
             f"- Ticket ID：`{result.ticket.ticket_id}`\n"
             f"- 当前频道名：`{result.new_channel_name}`"
         )
 
+    if result.outcome in {"queued", "already_queued"}:
+        position = result.queue_position or "未知"
+        lines = [
+            "该 ticket 已进入排队，staff 会在空位释放后自动接手。"
+            if result.outcome == "queued"
+            else "该 ticket 当前仍在排队中，无需重复提交。",
+            f"- Ticket ID：`{result.ticket.ticket_id}`",
+            f"- 当前频道名：`{result.new_channel_name}`",
+            f"- 当前排队位置：`#{position}`",
+        ]
+        if result.active_count is not None and result.max_open_tickets is not None:
+            lines.append(
+                f"- 当前 active 容量：`{result.active_count}/{result.max_open_tickets}`"
+            )
+        lines.append("- 系统会在有空位时自动将此 ticket 正式提交给 staff。")
+        return "\n".join(lines)
+
     lines = [
         "draft ticket 已提交。",
         f"- Ticket ID：`{result.ticket.ticket_id}`",
         f"- 当前频道名：`{result.new_channel_name}`",
-        "- staff 现在已经可以查看当前频道。",
+        "- staff 现在已经可以查看当前频道。"
+        if result.outcome == "submitted"
+        else "- 提交流程已完成。",
     ]
     if result.channel_name_changed:
         lines.insert(2, f"- 原频道名：`{result.old_channel_name}`")
@@ -134,6 +153,9 @@ def _build_submit_service(interaction: discord.Interaction) -> SubmitService:
     return SubmitService(
         resources.database,
         lock_manager=getattr(resources, "lock_manager", None),
+        snapshot_service=getattr(resources, "snapshot_service", None),
+        capacity_service=getattr(resources, "capacity_service", None),
+        queue_service=getattr(resources, "queue_service", None),
     )
 
 
