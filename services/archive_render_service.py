@@ -141,6 +141,7 @@ class ArchiveRenderService:
                     "created_at": self._format_timestamp(getattr(message, "created_at", None)),
                     "content": str(getattr(message, "content", "") or ""),
                     "attachments": [getattr(attachment, "filename", None) or getattr(attachment, "url", "attachment") for attachment in attachments],
+                    "embeds": self._extract_embeds(getattr(message, "embeds", None) or []),
                 }
             )
         return normalized_messages
@@ -297,15 +298,48 @@ class ArchiveRenderService:
         edits_by_message_id = annotations.get("edits_by_message_id", {}) if isinstance(annotations, dict) else {}
         deleted_messages = annotations.get("deleted_messages", []) if isinstance(annotations, dict) else []
 
+        timeline: list[dict[str, Any]] = []
+        for msg in messages:
+            timeline.append({**msg, "_deleted": False, "_edits": []})
+        for del_msg in deleted_messages:
+            timeline.append(
+                {
+                    "message_id": del_msg.get("message_id"),
+                    "author_name": del_msg.get("author_name", "Unknown"),
+                    "author_id": del_msg.get("author_id"),
+                    "created_at": del_msg.get("timestamp", "unknown"),
+                    "content": del_msg.get("content", ""),
+                    "attachments": del_msg.get("attachments") or [],
+                    "embeds": [],
+                    "_deleted": True,
+                    "_edits": del_msg.get("edits") or [],
+                }
+            )
+
+        def _mid_sort_key(entry: dict[str, Any]) -> int:
+            try:
+                return int(entry.get("message_id") or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        timeline.sort(key=_mid_sort_key)
+
         rows: list[str] = []
-        for message in messages:
+        for entry in timeline:
+            is_deleted = entry.get("_deleted", False)
+            css_class = "message deleted" if is_deleted else "message"
+
             attachment_lines = ""
-            attachments = message["attachments"]
+            attachments = entry.get("attachments") or []
             if attachments:
                 rendered_attachments = "".join(f"<li>{html.escape(str(item))}</li>" for item in attachments)
                 attachment_lines = f"<ul>{rendered_attachments}</ul>"
 
-            edit_records = edits_by_message_id.get(message.get("message_id"), [])
+            embed_lines = ""
+            for embed_data in entry.get("embeds") or []:
+                embed_lines += ArchiveRenderService._render_embed_html(embed_data)
+
+            edit_records = entry.get("_edits") or [] if is_deleted else edits_by_message_id.get(entry.get("message_id"), [])
             edit_lines = ""
             if edit_records:
                 rendered_edits = "".join(
@@ -318,12 +352,16 @@ class ArchiveRenderService:
                 )
                 edit_lines = f"<section class='snapshot-annotation'><h4>编辑快照</h4><ul>{rendered_edits}</ul></section>"
 
+            deleted_label = "<span class='deleted-label'>[已删除]</span>" if is_deleted else ""
+
             rows.append(
-                "<article class='message'>"
-                f"<div class='meta'><span class='author'>{html.escape(str(message['author_name']))}</span> "
-                f"<span class='author-id'>({html.escape(str(message['author_id'] or 'unknown'))})</span> "
-                f"<span class='timestamp'>{html.escape(str(message['created_at']))}</span></div>"
-                f"<pre>{html.escape(str(message['content'])) or '(empty message)'}</pre>"
+                f"<article class='{css_class}'>"
+                f"<div class='meta'><span class='author'>{html.escape(str(entry['author_name']))}</span> "
+                f"<span class='author-id'>({html.escape(str(entry.get('author_id') or 'unknown'))})</span> "
+                f"<span class='timestamp'>{html.escape(str(entry['created_at']))}</span>"
+                f"{deleted_label}</div>"
+                f"<pre>{html.escape(str(entry.get('content', ''))) or '(empty message)'}</pre>"
+                f"{embed_lines}"
                 f"{attachment_lines}"
                 f"{edit_lines}"
                 "</article>"
@@ -331,41 +369,6 @@ class ArchiveRenderService:
 
         if not rows:
             rows.append("<p>No transcript messages were available.</p>")
-
-        deleted_section = ""
-        if deleted_messages:
-            rendered_deleted = []
-            for deleted_message in deleted_messages:
-                attachment_lines = ""
-                attachments = deleted_message.get("attachments") or []
-                if attachments:
-                    attachment_lines = "<ul>" + "".join(f"<li>{html.escape(str(item))}</li>" for item in attachments) + "</ul>"
-                timeline_lines = ""
-                edits = deleted_message.get("edits") or []
-                if edits:
-                    timeline_lines = (
-                        "<ul>"
-                        + "".join(
-                            "<li>"
-                            f"{html.escape(str(edit.get('timestamp', 'unknown')))} | "
-                            f"{html.escape(str(edit.get('old_content', '') or '(empty)'))} -> "
-                            f"{html.escape(str(edit.get('new_content', '') or '(empty)'))}"
-                            "</li>"
-                            for edit in edits
-                        )
-                        + "</ul>"
-                    )
-                rendered_deleted.append(
-                    "<article class='message deleted'>"
-                    f"<div class='meta'><span class='author'>{html.escape(str(deleted_message.get('author_name', 'Unknown')))}</span> "
-                    f"<span class='author-id'>({html.escape(str(deleted_message.get('author_id') or 'unknown'))})</span> "
-                    f"<span class='timestamp'>{html.escape(str(deleted_message.get('timestamp') or 'unknown'))}</span></div>"
-                    f"<pre>{html.escape(str(deleted_message.get('content', '') or '(empty message)'))}</pre>"
-                    f"{attachment_lines}"
-                    f"{timeline_lines}"
-                    "</article>"
-                )
-            deleted_section = f"<section class='deleted-messages'><h2>Deleted messages from snapshots</h2>{''.join(rendered_deleted)}</section>"
 
         rendered_notices = ""
         if notices:
@@ -382,6 +385,16 @@ class ArchiveRenderService:
             "<style>body{font-family:Segoe UI,Arial,sans-serif;background:#111827;color:#f3f4f6;padding:24px;}"
             ".message{border:1px solid #374151;border-radius:8px;padding:12px;margin:12px 0;background:#1f2937;}"
             ".message.deleted{border-color:#7c2d12;background:#2b1d1b;}"
+            ".message.deleted pre{text-decoration:line-through;opacity:0.7;}"
+            ".deleted-label{color:#ef4444;font-size:12px;font-weight:600;margin-left:8px;}"
+            ".embed{border-left:4px solid #5865f2;background:#2f3136;padding:8px 12px;margin:8px 0;border-radius:4px;}"
+            ".embed-author{font-size:12px;color:#b9bbbe;}"
+            ".embed-title{font-weight:600;color:#00b0f4;margin:4px 0;}"
+            ".embed-description{color:#dcddde;white-space:pre-wrap;margin:4px 0;}"
+            ".embed-field{margin:4px 0;}"
+            ".embed-field-name{font-weight:600;font-size:13px;}"
+            ".embed-field-value{font-size:13px;color:#dcddde;}"
+            ".embed-footer{font-size:11px;color:#72767d;margin-top:4px;}"
             ".meta{color:#9ca3af;font-size:12px;margin-bottom:8px;}pre{white-space:pre-wrap;word-break:break-word;}"
             ".snapshot-annotation{margin-top:12px;padding:8px;border-top:1px dashed #4b5563;color:#d1d5db;}"
             ".deleted-messages,.timeline-section{margin-top:32px;}"
@@ -391,7 +404,6 @@ class ArchiveRenderService:
             f"{header}"
             f"{rendered_notices}"
             f"{''.join(rows)}"
-            f"{deleted_section}"
             f"{rendered_extra_sections}"
             "</body></html>"
         )
@@ -464,6 +476,60 @@ class ArchiveRenderService:
             return int(value)
         except (TypeError, ValueError):
             return None
+
+    @staticmethod
+    def _extract_embeds(embeds: list[Any]) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = []
+        for embed_obj in embeds:
+            data: dict[str, Any] = {}
+            embed_author = getattr(embed_obj, "author", None)
+            if embed_author and getattr(embed_author, "name", None):
+                data["author_name"] = str(embed_author.name)
+            title = getattr(embed_obj, "title", None)
+            if title:
+                data["title"] = str(title)
+            description = getattr(embed_obj, "description", None)
+            if description:
+                data["description"] = str(description)
+            raw_fields = getattr(embed_obj, "fields", None) or []
+            if raw_fields:
+                data["fields"] = [
+                    {"name": str(getattr(f, "name", "")), "value": str(getattr(f, "value", ""))}
+                    for f in raw_fields
+                ]
+            footer = getattr(embed_obj, "footer", None)
+            if footer and getattr(footer, "text", None):
+                data["footer"] = str(footer.text)
+            color = getattr(embed_obj, "color", None) or getattr(embed_obj, "colour", None)
+            if color is not None:
+                color_value = getattr(color, "value", color)
+                if isinstance(color_value, int):
+                    data["color"] = f"#{color_value:06x}"
+            if data:
+                result.append(data)
+        return result
+
+    @staticmethod
+    def _render_embed_html(embed_data: dict[str, Any]) -> str:
+        color = html.escape(embed_data.get("color", "#5865f2"))
+        parts = [f"<div class='embed' style='border-left-color:{color}'>"]
+        if "author_name" in embed_data:
+            parts.append(f"<div class='embed-author'>{html.escape(embed_data['author_name'])}</div>")
+        if "title" in embed_data:
+            parts.append(f"<div class='embed-title'>{html.escape(embed_data['title'])}</div>")
+        if "description" in embed_data:
+            parts.append(f"<div class='embed-description'>{html.escape(embed_data['description'])}</div>")
+        for field in embed_data.get("fields", []):
+            parts.append(
+                f"<div class='embed-field'>"
+                f"<div class='embed-field-name'>{html.escape(field.get('name', ''))}</div>"
+                f"<div class='embed-field-value'>{html.escape(field.get('value', ''))}</div>"
+                f"</div>"
+            )
+        if "footer" in embed_data:
+            parts.append(f"<div class='embed-footer'>{html.escape(embed_data['footer'])}</div>")
+        parts.append("</div>")
+        return "".join(parts)
 
     @staticmethod
     def _resolve_author_name(author: Any) -> str:
