@@ -127,8 +127,8 @@ class LoggingService:
             description=description,
             color=self._color_for_level(level),
         )
-        embed.add_field(name="Level", value=level.upper(), inline=True)
-        embed.add_field(name="Guild", value=str(guild_id), inline=True)
+        embed.add_field(name="等级", value=level.upper(), inline=True)
+        embed.add_field(name="服务器", value=str(guild_id), inline=True)
 
         if extra:
             for key, value in extra.items():

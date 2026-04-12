@@ -310,7 +310,7 @@ class CloseService:
                     ticket_id=context.ticket.ticket_id,
                     guild_id=context.ticket.guild_id,
                     level="warning",
-                    title="Close rollback permission restore failed",
+                    title="关闭回滚权限恢复失败",
                     description=f"关闭回滚后恢复权限失败：{exc}",
                     channel_id=getattr(config, "log_channel_id", None) if config else None,
                 )

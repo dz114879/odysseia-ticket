@@ -91,7 +91,7 @@ class RecoveryService:
                     await self._send_ticket_log(
                         ticket,
                         level="warning",
-                        title="Archive recovery skipped",
+                        title="归档恢复已跳过",
                         description="archive_failed 未满足自动重试条件，本轮仅记录不重试。",
                         extra={
                             "archive_attempts": ticket.archive_attempts,
@@ -121,7 +121,7 @@ class RecoveryService:
             await self._send_ticket_log(
                 ticket,
                 level="warning",
-                title="Missing channel recovery triggered",
+                title="缺失频道恢复已触发",
                 description="检测到 ticket 频道被删除，已尝试改用 snapshots fallback transcript 补偿。",
                 extra={"channel_id": channel_id, "status": ticket.status.value},
             )

@@ -488,7 +488,7 @@ class StaffPermissionService:
         await self.logging_service.send_guild_log(
             guild_id,
             "warning",
-            "Permission update failed",
+            "权限更新失败",
             f"set_permissions 调用失败：{exc}",
             channel_id=log_channel_id,
             extra=extra,

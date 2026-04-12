@@ -242,7 +242,7 @@ class ArchiveService:
             await self._send_ticket_log(
                 ticket,
                 level="warning",
-                title="Archive fallback attempt failed",
+                title="归档备用方案尝试失败",
                 description="无法使用 snapshots fallback transcript 补偿当前归档。",
                 extra={"reason": reason},
             )
@@ -252,7 +252,7 @@ class ArchiveService:
         await self._send_ticket_log(
             ticket,
             level="warning",
-            title="Archive fallback transcript used",
+            title="已使用备用归档记录",
             description="当前归档已降级为 snapshots fallback transcript。",
             extra={
                 "reason": live_failure_reason or "live channel unavailable",
@@ -282,7 +282,7 @@ class ArchiveService:
                     await self._send_ticket_log(
                         ticket,
                         level="warning",
-                        title="Ticket channel deletion failed",
+                        title="工单频道删除失败",
                         description=f"归档完成后删除频道失败：{exc}",
                         extra={"channel_id": str(ticket.channel_id)},
                     )
@@ -296,7 +296,7 @@ class ArchiveService:
             await self._send_ticket_log(
                 ticket,
                 level="warning",
-                title="Ticket channel not resolvable",
+                title="无法解析工单频道",
                 description=f"归档完成后无法解析频道，跳过删除。channel_id={ticket.channel_id}",
             )
             return ticket, False
@@ -317,7 +317,7 @@ class ArchiveService:
             await self._send_ticket_log(
                 ticket,
                 level="warning",
-                title="Ticket cleanup failed",
+                title="工单清理失败",
                 description="归档后清理操作失败（文件/缓存清理）。",
             )
             return ticket, False
@@ -411,7 +411,7 @@ class ArchiveService:
         await self._send_ticket_log(
             updated_ticket,
             level="error",
-            title="Archive flow failed",
+            title="归档流程失败",
             description="当前 ticket 进入 archive_failed，需要恢复或人工介入。",
             extra={"reason": reason, "archive_attempts": attempts},
         )

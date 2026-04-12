@@ -170,7 +170,7 @@ class QueueService:
                     ticket.channel_id,
                 )
                 await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "Queue promotion deferred",
+                    ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
                     f"排队 ticket 推进延迟：无法解析频道 {ticket.channel_id}",
                     log_channel_id=getattr(config, "log_channel_id", None),
                 )
@@ -184,7 +184,7 @@ class QueueService:
                 )
                 abandoned_position = position
                 await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "Queued ticket abandoned",
+                    ticket.ticket_id, guild_id, "warning", "排队工单已废弃",
                     f"排队 ticket 已废弃：频道不存在 (channel_id={ticket.channel_id})",
                     log_channel_id=getattr(config, "log_channel_id", None),
                 )
@@ -199,7 +199,7 @@ class QueueService:
                     ticket.creator_id,
                 )
                 await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "Queue promotion deferred",
+                    ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
                     f"排队 ticket 推进延迟：无法解析创建者 (creator_id={ticket.creator_id})",
                     log_channel_id=getattr(config, "log_channel_id", None),
                 )
@@ -216,7 +216,7 @@ class QueueService:
                 )
                 abandoned_position = position
                 await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "Queued ticket abandoned",
+                    ticket.ticket_id, guild_id, "warning", "排队工单已废弃",
                     f"排队 ticket 已废弃：创建者不可用 (creator_id={ticket.creator_id})",
                     log_channel_id=getattr(config, "log_channel_id", None),
                 )
@@ -235,7 +235,7 @@ class QueueService:
                     exc_info=True,
                 )
                 await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "Queue promotion deferred",
+                    ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
                     "排队 ticket 推进延迟：验证失败。",
                     log_channel_id=getattr(config, "log_channel_id", None),
                 )
@@ -246,7 +246,7 @@ class QueueService:
                     ticket.ticket_id,
                 )
                 await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "Queue promotion failed",
+                    ticket.ticket_id, guild_id, "warning", "队列提升失败",
                     f"排队 ticket 推进失败：{exc}",
                     log_channel_id=getattr(config, "log_channel_id", None),
                 )
@@ -384,7 +384,7 @@ class QueueService:
             if self.logging_service is not None and guild_id is not None:
                 config = self.guild_repository.get_config(guild_id)
                 await self.logging_service.send_guild_log(
-                    guild_id, "warning", "Queued ticket channel deletion failed",
+                    guild_id, "warning", "排队工单频道删除失败",
                     f"删除废弃排队 ticket 的频道失败：{exc}",
                     channel_id=getattr(config, "log_channel_id", None) if config else None,
                     extra={"channel_id": str(channel_id)},

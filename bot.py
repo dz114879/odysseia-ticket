@@ -96,7 +96,7 @@ class TicketBot(commands.Bot):
                     await self.resources.logging_service.send_guild_log(
                         guild_id or 0,
                         "warning",
-                        "Message handler crashed",
+                        "消息处理器崩溃",
                         f"on_message 处理器 `{handler.__qualname__}` 崩溃：{exc}",
                         channel_id=self._get_log_channel_id(guild_id),
                     )
@@ -146,7 +146,7 @@ class TicketBot(commands.Bot):
         elif isinstance(original, discord.HTTPException):
             user_message = f"Discord API 错误（{original.status}）：{original.text}"
         else:
-            user_message = "处理命令时发生内部错误，请稍后重试。"
+            user_message = "处理命令时发生未知错误，如问题持续出现，请联系开发者。"
 
         logger = logging.getLogger(__name__)
         logger.warning("Unhandled app command error: %s", original, exc_info=original)
@@ -157,8 +157,8 @@ class TicketBot(commands.Bot):
             await self.resources.logging_service.send_guild_log(
                 guild_id or 0,
                 "error",
-                "Unhandled command error",
-                f"命令 `/{command_name}` 执行出错：{original}",
+                "未处理的命令错误",
+                f"命令 `/{command_name}` 执行出错：{original}\n如持续出现，请联系开发者排查。",
                 channel_id=self._get_log_channel_id(guild_id),
                 extra={"user_id": str(interaction.user.id), "error_type": type(original).__name__},
             )
@@ -219,7 +219,7 @@ class TicketBot(commands.Bot):
                 await self.resources.logging_service.send_guild_log(
                     panel.guild_id,
                     "warning",
-                    "Panel view restore failed",
+                    "面板视图恢复失败",
                     f"启动时恢复面板视图失败：{exc}",
                     channel_id=self._get_log_channel_id(panel.guild_id),
                     extra={"panel_id": str(panel.panel_id)},

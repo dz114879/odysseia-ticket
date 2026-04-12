@@ -513,7 +513,7 @@ class SnapshotService:
                     ticket_id=ticket.ticket_id,
                     guild_id=ticket.guild_id,
                     level="warning",
-                    title="Ticket snapshot create cap reached",
+                    title="工单快照创建上限已达",
                     description=(f"Ticket `{ticket.ticket_id}` 已达到 {self.create_limit} 条 create 快照上限。"),
                     channel_id=getattr(config, "log_channel_id", None),
                     extra={"channel_id": channel_id, "create_count": create_count},

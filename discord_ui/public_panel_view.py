@@ -89,13 +89,13 @@ class DraftCreateConfirmButton(discord.ui.Button):
                 await self.panel_service.logging_service.send_guild_log(
                     self.guild_id,
                     "error",
-                    "Draft ticket creation failed",
+                    "草稿工单创建失败",
                     f"用户 <@{interaction.user.id}> 创建 draft ticket 失败：{exc}",
                     channel_id=getattr(config, "log_channel_id", None) if config else None,
                     extra={"category": self.category.category_key, "error_type": type(exc).__name__},
                 )
             await interaction.response.send_message(
-                "创建 draft ticket 失败，请稍后重试。",
+                "创建草稿工单失败，如问题持续出现，请联系开发者。",
                 ephemeral=True,
             )
             return

@@ -310,7 +310,7 @@ class TransferService:
                         ticket_id=ticket.ticket_id,
                         guild_id=ticket.guild_id,
                         level="error",
-                        title="Transfer execution failed",
+                        title="转移执行失败",
                         description=f"定时 Transfer 执行失败：{exc}",
                         channel_id=getattr(config, "log_channel_id", None) if config else None,
                     )
@@ -385,7 +385,7 @@ class TransferService:
                             ticket_id=ticket.ticket_id,
                             guild_id=ticket.guild_id,
                             level="warning",
-                            title="Transfer permission sync failed",
+                            title="转移权限同步失败",
                             description=f"Transfer 执行后权限重算失败：{exc}",
                             channel_id=getattr(config, "log_channel_id", None),
                         )
@@ -681,7 +681,7 @@ class TransferService:
             ticket_id=ticket.ticket_id,
             guild_id=ticket.guild_id,
             level="success",
-            title="Ticket transfer executed",
+            title="工单转移已执行",
             description=description,
             channel_id=config.log_channel_id,
             extra=extra,

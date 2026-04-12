@@ -66,7 +66,7 @@ class PanelCog(commands.Cog):
         )
         config = self.guild_config_service.get_config(guild.id)
         await self.logging_service.send_guild_log(
-            guild.id, "info", "Panel created",
+            guild.id, "info", "面板已创建",
             f"管理员 <@{interaction.user.id}> 创建了公开面板。",
             channel_id=getattr(config, "log_channel_id", None) if config else None,
             extra={"panel_id": str(result.record.panel_id)},
@@ -90,7 +90,7 @@ class PanelCog(commands.Cog):
         )
         config = self.guild_config_service.get_config(guild.id)
         await self.logging_service.send_guild_log(
-            guild.id, "info", "Panel refreshed",
+            guild.id, "info", "面板已刷新",
             f"管理员 <@{interaction.user.id}> 刷新了公开面板。",
             channel_id=getattr(config, "log_channel_id", None) if config else None,
             extra={"panel_id": str(result.record.panel_id)},
@@ -125,7 +125,7 @@ class PanelCog(commands.Cog):
         )
         config = self.guild_config_service.get_config(guild.id)
         await self.logging_service.send_guild_log(
-            guild.id, "info", "Panel removed",
+            guild.id, "info", "面板已移除",
             f"管理员 <@{interaction.user.id}> 移除了公开面板。",
             channel_id=getattr(config, "log_channel_id", None) if config else None,
             extra={"panel_id": str(result.record.panel_id), "message_deleted": str(result.message_deleted)},
