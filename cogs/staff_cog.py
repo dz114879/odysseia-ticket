@@ -182,6 +182,39 @@ class StaffCog(commands.Cog):
     ) -> None:
         await self.transfer_current_ticket(interaction, target_category_key=target_category_key, reason=reason)
 
+    @transfer_command.autocomplete("target_category_key")
+    async def _transfer_target_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str,
+    ) -> list[app_commands.Choice[str]]:
+        guild = interaction.guild
+        channel = interaction.channel
+        if guild is None or channel is None:
+            return []
+
+        try:
+            guild_repo = self.transfer_service.guild_repository
+            ticket_repo = self.transfer_service.ticket_repository
+            ticket = ticket_repo.get_by_channel_id(channel.id)
+            current_category_key = ticket.category_key if ticket is not None else None
+
+            categories = guild_repo.list_categories(guild.id, enabled_only=True)
+            choices: list[app_commands.Choice[str]] = []
+            needle = current.lower()
+            for cat in categories:
+                if cat.category_key == current_category_key:
+                    continue
+                label = f"{cat.emoji} {cat.display_name}" if cat.emoji else cat.display_name
+                if needle and needle not in label.lower() and needle not in cat.category_key.lower():
+                    continue
+                choices.append(app_commands.Choice(name=label[:100], value=cat.category_key))
+                if len(choices) >= 25:
+                    break
+            return choices
+        except Exception:
+            return []
+
     @ticket_group.command(name="untransfer", description="撤销当前 ticket 的跨分类转交")
     @app_commands.guild_only()
     async def untransfer_command(self, interaction: discord.Interaction) -> None:
