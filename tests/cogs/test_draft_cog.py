@@ -100,7 +100,7 @@ class FakeInteraction:
 @pytest.fixture
 def prepared_draft_cog_context(migrated_database):
     guild = FakeGuild(1)
-    channel = FakeChannel(2000, guild, name="ticket-support-0001")
+    channel = FakeChannel(2000, guild, name="技术支持")
     repository = TicketRepository(migrated_database)
     repository.create(
         TicketRecord(
@@ -133,8 +133,8 @@ async def test_rename_current_draft_updates_channel_and_returns_feedback(
 
     assert interaction.response.messages
     assert "draft 标题已更新" in interaction.response.messages[0]["content"]
-    assert "ticket-0001-登录异常-复现" in interaction.response.messages[0]["content"]
-    assert channel.name == "ticket-0001-登录异常-复现"
+    assert "登录异常-复现" in interaction.response.messages[0]["content"]
+    assert channel.name == "登录异常-复现"
     assert stored is not None
     assert stored.status is TicketStatus.DRAFT
 

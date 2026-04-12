@@ -39,8 +39,6 @@ def build_panel_request_preview_embed(category: TicketCategoryConfig) -> discord
     )
     if category.description:
         embed.add_field(name="分类说明", value=category.description, inline=False)
-    if category.extra_welcome_text:
-        embed.add_field(name="提交前提示", value=category.extra_welcome_text, inline=False)
     embed.add_field(name="下一步", value="确认创建后，请在 draft 频道发送第一条消息。", inline=False)
     return embed
 

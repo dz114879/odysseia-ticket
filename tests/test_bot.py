@@ -57,7 +57,6 @@ def seed_active_panel_state(migrated_database) -> PanelRecord:
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请描述复现步骤。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",

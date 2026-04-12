@@ -70,23 +70,20 @@ class FakeGuild:
 
 
 class FakeChannel:
-    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str, topic: str) -> None:
+    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str) -> None:
         self.id = channel_id
         self.guild = guild
         self.name = name
-        self.topic = topic
         self.next_message_id = 1000
         self.sent_messages: list[FakeMessage] = []
         self.pinned_messages: list[FakeMessage] = []
         self.edit_calls: list[dict] = []
         self.permission_calls: list[dict] = []
 
-    async def edit(self, *, name=None, topic=None, reason=None) -> None:
+    async def edit(self, *, name=None, reason=None, **kwargs) -> None:
         if name is not None:
             self.name = name
-        if topic is not None:
-            self.topic = topic
-        self.edit_calls.append({"name": name, "topic": topic, "reason": reason})
+        self.edit_calls.append({"name": name, "reason": reason})
 
     async def send(self, *, content=None, embed=None, view=None) -> FakeMessage:
         message = FakeMessage(
@@ -158,7 +155,6 @@ def prepared_submit_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[301]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -191,8 +187,7 @@ def prepared_submit_context(migrated_database):
     channel = FakeChannel(
         9001,
         guild,
-        name="ticket-support-0001",
-        topic="ticket_id=1-support-0001 creator_id=201 status=draft",
+        name="技术支持",
     )
     welcome_message = FakeMessage(
         5001,
@@ -235,13 +230,12 @@ async def test_submit_draft_ticket_happy_path_updates_status_permissions_and_mes
 
     assert result.outcome == "submitted"
     assert result.channel_name_changed is True
-    assert result.old_channel_name == "ticket-support-0001"
-    assert result.new_channel_name == "ticket-0001-login-fails-badly"
+    assert result.old_channel_name == "技术支持"
+    assert result.new_channel_name == "login-fails-badly"
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
     assert stored.queued_at is None
-    assert channel.name == "ticket-0001-login-fails-badly"
-    assert channel.topic == "ticket_id=1-support-0001 creator_id=201 status=submitted"
+    assert channel.name == "login-fails-badly"
     assert stored.staff_panel_message_id == result.staff_panel_message.id
     assert {call["target"].id for call in channel.permission_calls} == {400, 500, 301}
     assert result.welcome_message_updated is True
@@ -249,7 +243,7 @@ async def test_submit_draft_ticket_happy_path_updates_status_permissions_and_mes
     assert len(channel.sent_messages) == 2
     assert result.divider_message is channel.sent_messages[0]
     assert result.staff_panel_message is channel.sent_messages[1]
-    assert "已提交" in (result.divider_message.content or "")
+    assert "已成功提交" in (result.divider_message.content or "")
     assert result.staff_panel_message.embed is not None
     assert result.staff_panel_message.embed.title == "🛠️ Staff 控制面板"
     assert isinstance(result.staff_panel_message.view, StaffPanelView)
@@ -337,7 +331,7 @@ async def test_submit_draft_ticket_is_idempotent_for_already_submitted_ticket(
     welcome_message = prepared_submit_context["welcome_message"]
     repository = prepared_submit_context["ticket_repository"]
     repository.update(ticket.ticket_id, status=TicketStatus.SUBMITTED)
-    channel.name = "ticket-0001-existing-title"
+    channel.name = "existing-title"
     service = SubmitService(database)
 
     result = await service.submit_draft_ticket(
@@ -403,8 +397,7 @@ async def test_submit_draft_ticket_queues_when_active_capacity_is_full(prepared_
     assert stored.status is TicketStatus.QUEUED
     assert stored.queued_at is not None
     assert stored.staff_panel_message_id is None
-    assert channel.name == "ticket-0001-need-queue-now"
-    assert channel.topic == "ticket_id=1-support-0001 creator_id=201 status=queued"
+    assert channel.name == "need-queue-now"
     assert result.staff_panel_message is None
     assert result.divider_message is None
     assert result.welcome_message_updated is True

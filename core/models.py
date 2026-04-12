@@ -75,7 +75,6 @@ class TicketCategoryConfig:
     description: str | None = None
     staff_role_id: int | None = None
     staff_user_ids_json: str = "[]"
-    extra_welcome_text: str | None = None
     is_enabled: bool = True
     allowlist_role_ids_json: str = "[]"
     denylist_role_ids_json: str = "[]"

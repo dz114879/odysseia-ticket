@@ -84,7 +84,6 @@ def prepared_rename_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -116,7 +115,7 @@ def prepared_rename_context(migrated_database):
         "database": migrated_database,
         "ticket_repository": ticket_repository,
         "ticket": ticket,
-        "channel": FakeChannel(ticket.channel_id or 9001, name="🔴|ticket-0001-login-error"),
+        "channel": FakeChannel(ticket.channel_id or 9001, name="🔴|login-error"),
         "staff_member": staff_member,
         "outsider": outsider,
     }
@@ -133,9 +132,9 @@ async def test_rename_ticket_updates_submitted_ticket_and_posts_log(prepared_ren
     stored = prepared_rename_context["ticket_repository"].get_by_channel_id(channel.id)
 
     assert result.changed is True
-    assert result.old_name == "🔴|ticket-0001-login-error"
-    assert result.new_name == "🔴|ticket-0001-支付-异常"
-    assert channel.name == "🔴|ticket-0001-支付-异常"
+    assert result.old_name == "🔴|login-error"
+    assert result.new_name == "🔴|支付-异常"
+    assert channel.name == "🔴|支付-异常"
     assert channel.edit_calls[0]["reason"] == "Rename ticket 1-support-0001 in submitted state"
     assert stored is not None
     assert stored.updated_at != "2024-01-01T00:00:00+00:00"
@@ -158,13 +157,13 @@ async def test_rename_ticket_updates_sleep_ticket_and_preserves_sleep_prefix(pre
         priority=TicketPriority.SLEEP,
         priority_before_sleep=TicketPriority.HIGH,
     )
-    channel.name = "💤|ticket-0001-login-error"
+    channel.name = "💤|login-error"
 
     result = await service.rename_ticket(channel, actor=staff_member, requested_name="等待 用户 回复")
 
     assert result.changed is True
-    assert result.new_name == "💤|ticket-0001-等待-用户-回复"
-    assert channel.name == "💤|ticket-0001-等待-用户-回复"
+    assert result.new_name == "💤|等待-用户-回复"
+    assert channel.name == "💤|等待-用户-回复"
     assert channel.edit_calls[0]["reason"] == "Rename ticket 1-support-0001 in sleep state"
 
 
@@ -214,6 +213,6 @@ async def test_rename_ticket_is_noop_when_new_title_matches_current_name(prepare
     result = await service.rename_ticket(channel, actor=staff_member, requested_name="login error")
 
     assert result.changed is False
-    assert result.new_name == "🔴|ticket-0001-login-error"
+    assert result.new_name == "🔴|login-error"
     assert channel.edit_calls == []
     assert channel.sent_messages == []

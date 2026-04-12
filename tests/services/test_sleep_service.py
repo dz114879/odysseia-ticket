@@ -92,7 +92,6 @@ def prepared_sleep_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -124,7 +123,7 @@ def prepared_sleep_context(migrated_database):
         "database": migrated_database,
         "ticket_repository": ticket_repository,
         "ticket": ticket,
-        "channel": FakeChannel(ticket.channel_id or 9001, name="🔴|ticket-0001-login-error"),
+        "channel": FakeChannel(ticket.channel_id or 9001, name="🔴|login-error"),
         "staff_member": staff_member,
         "outsider": outsider,
     }
@@ -193,8 +192,8 @@ async def test_sleep_ticket_updates_status_priority_channel_name_and_panel_refre
 
     assert result.changed is True
     assert result.previous_priority is TicketPriority.HIGH
-    assert result.old_channel_name == "🔴|ticket-0001-login-error"
-    assert result.new_channel_name == "💤|ticket-0001-login-error"
+    assert result.old_channel_name == "🔴|login-error"
+    assert result.new_channel_name == "💤|login-error"
     assert result.channel_name_changed is True
     assert stored is not None
     assert stored.status is TicketStatus.SLEEP
@@ -203,7 +202,7 @@ async def test_sleep_ticket_updates_status_priority_channel_name_and_panel_refre
     assert result.ticket.status is TicketStatus.SLEEP
     assert result.ticket.priority is TicketPriority.SLEEP
     assert result.ticket.priority_before_sleep is TicketPriority.HIGH
-    assert channel.name == "💤|ticket-0001-login-error"
+    assert channel.name == "💤|login-error"
     assert channel.edit_calls[0]["reason"] == "Put ticket 1-support-0001 to sleep"
     assert channel.sent_messages
     assert "已将 ticket `1-support-0001` 挂起" in channel.sent_messages[0].content
@@ -245,7 +244,7 @@ async def test_handle_message_wakes_sleep_ticket_and_restores_previous_priority(
         priority=TicketPriority.SLEEP,
         priority_before_sleep=TicketPriority.HIGH,
     )
-    channel.name = "💤|ticket-0001-login-error"
+    channel.name = "💤|login-error"
     message = SimpleNamespace(
         author=SimpleNamespace(id=777, bot=False),
         guild=SimpleNamespace(id=1),
@@ -257,13 +256,13 @@ async def test_handle_message_wakes_sleep_ticket_and_restores_previous_priority(
 
     assert result is not None
     assert result.restored_priority is TicketPriority.HIGH
-    assert result.old_channel_name == "💤|ticket-0001-login-error"
-    assert result.new_channel_name == "🔴|ticket-0001-login-error"
+    assert result.old_channel_name == "💤|login-error"
+    assert result.new_channel_name == "🔴|login-error"
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
     assert stored.priority is TicketPriority.HIGH
     assert stored.priority_before_sleep is None
-    assert channel.name == "🔴|ticket-0001-login-error"
+    assert channel.name == "🔴|login-error"
     assert channel.edit_calls[0]["reason"] == "Wake ticket 1-support-0001 from sleep"
     assert channel.sent_messages
     assert "已唤醒 ticket `1-support-0001`" in channel.sent_messages[0].content
@@ -325,7 +324,7 @@ async def test_sleep_ticket_rolls_back_ticket_state_when_channel_rename_fails(pr
     staff_member = prepared_sleep_context["staff_member"]
     ticket_repository = prepared_sleep_context["ticket_repository"]
     ticket = prepared_sleep_context["ticket"]
-    failing_channel = FakeChannel(ticket.channel_id or 9001, name="ticket-0001-login-error", fail_edit=True)
+    failing_channel = FakeChannel(ticket.channel_id or 9001, name="login-error", fail_edit=True)
     service = SleepService(database, lock_manager=LockManager())
 
     with pytest.raises(RuntimeError, match="rename failed"):
@@ -345,7 +344,7 @@ async def test_wake_ticket_rolls_back_state_when_channel_rename_fails(prepared_s
     ticket_repository = prepared_sleep_context["ticket_repository"]
     ticket = prepared_sleep_context["ticket"]
     staff_panel_service = FakeStaffPanelService()
-    failing_channel = FakeChannel(ticket.channel_id or 9001, name="💤|ticket-0001-login-error", fail_edit=True)
+    failing_channel = FakeChannel(ticket.channel_id or 9001, name="💤|login-error", fail_edit=True)
     service = SleepService(
         database,
         lock_manager=LockManager(),

@@ -24,10 +24,14 @@ class FakeChannel:
         self.name = name
         self.deleted = False
         self.delete_reasons: list[str | None] = []
+        self.sent_messages: list[str] = []
 
     async def delete(self, *, reason: str | None = None) -> None:
         self.deleted = True
         self.delete_reasons.append(reason)
+
+    async def send(self, *, content: str) -> None:
+        self.sent_messages.append(content)
 
 
 class FakeBot:
@@ -208,3 +212,111 @@ async def test_sweep_expired_drafts_is_idempotent_and_recovers_when_channel_miss
     assert second == []
     assert stored is not None
     assert stored.status is TicketStatus.ABANDONED
+
+
+@pytest.mark.asyncio
+async def test_sweep_draft_warnings_sends_24h_warning_when_approaching_expiry(
+    migrated_database,
+    repository: TicketRepository,
+) -> None:
+    channel = FakeChannel(3001)
+    repository.create(
+        make_draft_ticket(
+            "1-support-w001",
+            channel_id=channel.id,
+            created_at="2024-01-01T00:00:00+00:00",
+        )
+    )
+    service = DraftTimeoutService(
+        migrated_database,
+        bot=FakeBot([channel]),
+        lock_manager=LockManager(),
+    )
+
+    warned = await service.sweep_draft_warnings(now="2024-01-01T23:30:00+00:00")
+
+    assert warned == ["1-support-w001"]
+    assert len(channel.sent_messages) == 1
+    assert "1 小时后被自动废弃" in channel.sent_messages[0]
+    assert "<@42>" in channel.sent_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_sweep_draft_warnings_sends_6h_idle_warning_when_approaching_timeout(
+    migrated_database,
+    repository: TicketRepository,
+) -> None:
+    channel = FakeChannel(3002)
+    repository.create(
+        make_draft_ticket(
+            "1-support-w002",
+            channel_id=channel.id,
+            created_at="2024-01-01T00:00:00+00:00",
+            has_user_message=True,
+            last_user_message_at="2024-01-01T01:00:00+00:00",
+        )
+    )
+    service = DraftTimeoutService(
+        migrated_database,
+        bot=FakeBot([channel]),
+        lock_manager=LockManager(),
+    )
+
+    warned = await service.sweep_draft_warnings(now="2024-01-01T06:30:00+00:00")
+
+    assert warned == ["1-support-w002"]
+    assert len(channel.sent_messages) == 1
+    assert "由于您未发言" in channel.sent_messages[0]
+    assert "<@42>" in channel.sent_messages[0]
+
+
+@pytest.mark.asyncio
+async def test_sweep_draft_warnings_does_not_send_duplicate_warnings(
+    migrated_database,
+    repository: TicketRepository,
+) -> None:
+    channel = FakeChannel(3003)
+    repository.create(
+        make_draft_ticket(
+            "1-support-w003",
+            channel_id=channel.id,
+            created_at="2024-01-01T00:00:00+00:00",
+        )
+    )
+    service = DraftTimeoutService(
+        migrated_database,
+        bot=FakeBot([channel]),
+        lock_manager=LockManager(),
+    )
+
+    first = await service.sweep_draft_warnings(now="2024-01-01T23:30:00+00:00")
+    second = await service.sweep_draft_warnings(now="2024-01-01T23:45:00+00:00")
+
+    assert first == ["1-support-w003"]
+    assert second == []
+    assert len(channel.sent_messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_draft_warnings_skips_tickets_outside_warning_window(
+    migrated_database,
+    repository: TicketRepository,
+) -> None:
+    channel = FakeChannel(3004)
+    repository.create(
+        make_draft_ticket(
+            "1-support-w004",
+            channel_id=channel.id,
+            created_at="2024-01-01T00:00:00+00:00",
+        )
+    )
+    service = DraftTimeoutService(
+        migrated_database,
+        bot=FakeBot([channel]),
+        lock_manager=LockManager(),
+    )
+
+    warned = await service.sweep_draft_warnings(now="2024-01-01T10:00:00+00:00")
+
+    assert warned == []
+    assert len(channel.sent_messages) == 0

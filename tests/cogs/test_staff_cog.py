@@ -183,7 +183,6 @@ def prepared_staff_cog_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[302]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -199,7 +198,6 @@ def prepared_staff_cog_context(migrated_database):
             description="处理账单问题",
             staff_role_id=600,
             staff_user_ids_json="[]",
-            extra_welcome_text="请提供账单编号。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -223,7 +221,7 @@ def prepared_staff_cog_context(migrated_database):
     for member in (creator, staff_user, explicit_staff_user, outsider, admin_user):
         guild.add_member(member)
 
-    channel = FakeChannel(9001, guild, name="ticket-0001-login-error")
+    channel = FakeChannel(9001, guild, name="login-error")
     ticket_repository.create(
         TicketRecord(
             ticket_id="1-support-0001",
@@ -367,8 +365,8 @@ async def test_rename_current_ticket_updates_channel_and_returns_feedback(
     feedback = assert_deferred_ephemeral_followup(interaction)
 
     assert "ticket 标题已更新" in feedback["content"]
-    assert "ticket-0001-登录异常-复现" in feedback["content"]
-    assert channel.name == "ticket-0001-登录异常-复现"
+    assert "登录异常-复现" in feedback["content"]
+    assert channel.name == "登录异常-复现"
     assert channel.edit_calls[0]["reason"] == "Rename ticket 1-support-0001 in submitted state"
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
@@ -454,7 +452,7 @@ async def test_set_current_ticket_priority_updates_channel_name_and_feedback(
 
     assert "ticket 优先级已更新" in feedback["content"]
     assert "紧急" in feedback["content"]
-    assert channel.name == "‼️|ticket-0001-login-error"
+    assert channel.name == "‼️|login-error"
     assert channel.edit_calls[0]["reason"] == "Set ticket 1-support-0001 priority to emergency"
     assert stored is not None
     assert stored.priority is TicketPriority.EMERGENCY
@@ -481,7 +479,7 @@ async def test_sleep_current_ticket_updates_status_and_returns_feedback(
 
     assert "ticket 已进入 sleep" in feedback["content"]
     assert "睡前优先级：未设定 ⚪" in feedback["content"]
-    assert channel.name == "💤|ticket-0001-login-error"
+    assert channel.name == "💤|login-error"
     assert channel.edit_calls[0]["reason"] == "Put ticket 1-support-0001 to sleep"
     assert stored is not None
     assert stored.status is TicketStatus.SLEEP
@@ -682,7 +680,7 @@ async def test_staff_panel_priority_select_updates_ticket_and_returns_feedback(
     feedback = assert_deferred_ephemeral_followup(interaction)
     assert stored is not None
     assert stored.priority is TicketPriority.HIGH
-    assert channel.name == "🔴|ticket-0001-login-error"
+    assert channel.name == "🔴|login-error"
     assert "ticket 优先级已更新" in feedback["content"]
     assert "高" in feedback["content"]
 

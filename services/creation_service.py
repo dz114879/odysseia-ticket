@@ -15,6 +15,7 @@ from db.connection import DatabaseManager
 from db.repositories.counter_repository import CounterRepository
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
+from discord_ui.draft_embeds import build_draft_welcome_embed
 from discord_ui.draft_views import DraftWelcomeView
 from runtime.locks import LockManager
 from services.validation_service import ValidationService
@@ -87,8 +88,7 @@ class CreationService:
                 ticket_number=ticket_number,
             )
             channel_name = self.build_default_channel_name(
-                category_key=category.category_key,
-                ticket_number=ticket_number,
+                category_display_name=category.display_name,
             )
             parent_channel = self._require_ticket_parent_channel(guild, config)
             overwrites = self._build_draft_overwrites(
@@ -105,15 +105,15 @@ class CreationService:
                     channel_name,
                     category=parent_channel,
                     overwrites=overwrites,
-                    topic=self._build_channel_topic(ticket_id=ticket_id, creator_id=creator.id),
                     reason=f"Create draft ticket {ticket_id}",
                 )
+                welcome_content, welcome_embed = self._build_welcome_message(
+                    creator_id=creator.id,
+                    category=category,
+                )
                 welcome_message = await channel.send(
-                    content=self._build_welcome_message(
-                        creator_id=creator.id,
-                        ticket_id=ticket_id,
-                        category=category,
-                    ),
+                    content=welcome_content,
+                    embed=welcome_embed,
                     view=DraftWelcomeView(),
                 )
                 await self._pin_welcome_message(welcome_message)
@@ -265,33 +265,18 @@ class CreationService:
         return f"{guild_id}-{slug}-{ticket_number:04d}"
 
     @staticmethod
-    def build_default_channel_name(*, category_key: str, ticket_number: int) -> str:
-        slug = CreationService._slugify(category_key)
-        channel_name = f"ticket-{slug}-{ticket_number:04d}"
-        return channel_name[:95]
-
-    @staticmethod
-    def _build_channel_topic(*, ticket_id: str, creator_id: int) -> str:
-        return f"ticket_id={ticket_id} creator_id={creator_id} status=draft"
+    def build_default_channel_name(*, category_display_name: str) -> str:
+        return category_display_name[:95]
 
     @staticmethod
     def _build_welcome_message(
         *,
         creator_id: int,
-        ticket_id: str,
         category: TicketCategoryConfig,
-    ) -> str:
-        lines = [
-            f"您好 <@{creator_id}>，您的 draft ticket 已创建。",
-            f"- Ticket ID：`{ticket_id}`",
-            f"- 分类：{category.display_name}",
-            "- 当前阶段：draft（暂不对 staff 开放）",
-            "请直接在此频道发送第一条消息描述问题。",
-            "准备好后可点击下方“提交给 Staff”按钮，或使用 `/ticket submit` 提交。",
-        ]
-        if category.extra_welcome_text:
-            lines.append(f"补充提示：{category.extra_welcome_text}")
-        return "\n".join(lines)
+    ) -> tuple[str, discord.Embed]:
+        content = f"<@{creator_id}>"
+        embed = build_draft_welcome_embed(category_name=category.display_name)
+        return content, embed
 
     @staticmethod
     async def _pin_welcome_message(message: Any) -> None:

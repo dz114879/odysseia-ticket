@@ -13,14 +13,13 @@ def build_close_request_embed(
     reason: str | None,
 ) -> discord.Embed:
     embed = discord.Embed(
-        title="📩 用户关闭请求",
-        description=(f"<@{requester_id}> 请求关闭当前 ticket。\n请由合法 staff 点击下方按钮同意或拒绝。"),
+        title="📩 归档并关闭请求",
+        description=(f"<@{requester_id}> 希望关闭此 Ticket，理由：{reason or '未提供'}\n\n请处理人员在5分钟内审核此请求。"),
         color=discord.Color.orange(),
     )
     embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)
     embed.add_field(name="当前状态", value=_format_status_label(ticket.status), inline=True)
     embed.add_field(name="发起人", value=f"<@{requester_id}>", inline=True)
-    embed.add_field(name="请求理由", value=reason or "未提供", inline=False)
     embed.set_footer(text="请求有效期 5 分钟；若 staff 直接执行 /ticket close，旧请求会自动失效。")
     return embed
 
@@ -33,7 +32,7 @@ def build_close_request_status_embed(
     status_text: str,
 ) -> discord.Embed:
     embed = discord.Embed(
-        title="📩 用户关闭请求",
+        title="📩 归档并关闭请求",
         description=status_text,
         color=discord.Color.dark_grey(),
     )
@@ -52,9 +51,9 @@ def build_closing_notice_embed(
     requested_by_id: int | None = None,
 ) -> discord.Embed:
     embed = discord.Embed(
-        title="🔒 Ticket 正在关闭中",
+        title="🔒 Ticket 即将归档并关闭",
         description=(
-            "当前频道已进入关闭撤销窗口，期间会锁定所有非 Bot 用户发言。\n若需撤销，请点击下方「撤销关闭」按钮或使用 `/ticket close-cancel`。"
+            f"<@{initiated_by_id}> 已确认关闭本 Ticket，理由: {reason or '未提供'}\n\n本频道将在2分钟后关闭阅读权限，并开始归档；\n\n归档完成后，您可以下载归档文件，随后频道将被完全删除。\n\n如果这是误操作引起的，请立刻点击下方按钮，撤销关闭流程："
         ),
         color=discord.Color.red(),
     )
@@ -63,7 +62,6 @@ def build_closing_notice_embed(
     embed.add_field(name="原状态", value=_format_status_label(ticket.status_before or ticket.status), inline=True)
     if requested_by_id is not None:
         embed.add_field(name="来源请求", value=f"来自 <@{requested_by_id}> 的关闭请求", inline=False)
-    embed.add_field(name="关闭理由", value=reason or "未提供", inline=False)
     embed.add_field(name="归档开始时间", value=close_execute_at, inline=False)
     embed.set_footer(text="窗口结束后将自动进入 archiving，并在归档成功后删除频道。")
     return embed

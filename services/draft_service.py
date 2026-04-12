@@ -57,7 +57,7 @@ class DraftService:
             self._assert_draft_owner(ticket, actor_id)
 
             old_name = getattr(channel, "name", "") or ""
-            new_name = self.build_renamed_channel_name(ticket=ticket, requested_name=requested_name)
+            new_name = self.build_renamed_channel_name(requested_name=requested_name)
             if new_name == old_name:
                 return DraftRenameResult(
                     ticket=ticket,
@@ -124,21 +124,11 @@ class DraftService:
             raise PermissionDeniedError("只有 ticket 创建者可以在 draft 阶段执行此操作。")
 
     @staticmethod
-    def build_renamed_channel_name(*, ticket: TicketRecord, requested_name: str) -> str:
+    def build_renamed_channel_name(*, requested_name: str) -> str:
         normalized = DraftService._slugify(requested_name)
         if not normalized:
             raise ValidationError("新的 draft 标题不能为空。")
-
-        ticket_number = DraftService._extract_ticket_number(ticket.ticket_id)
-        prefix = f"ticket-{ticket_number}-" if ticket_number else "ticket-"
-        max_slug_length = max(1, 95 - len(prefix))
-        trimmed_slug = normalized[:max_slug_length].strip("-") or "draft"
-        return f"{prefix}{trimmed_slug}"[:95]
-
-    @staticmethod
-    def _extract_ticket_number(ticket_id: str) -> str:
-        candidate = ticket_id.rsplit("-", 1)[-1]
-        return candidate if candidate.isdigit() else ""
+        return normalized[:95]
 
     @staticmethod
     def _slugify(value: str) -> str:

@@ -95,7 +95,6 @@ def test_setup_guild_keeps_existing_categories(
             description="custom category",
             staff_role_id=999,
             staff_user_ids_json="[]",
-            extra_welcome_text="hello",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",

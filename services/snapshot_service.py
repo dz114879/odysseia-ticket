@@ -497,15 +497,11 @@ class SnapshotService:
             return
 
         if create_count >= self.create_warning_threshold and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_900"):
-            await send(content=(f"⚠️ 当前 ticket 快照已记录 {create_count} 条消息，接近上限，请尽量尽快处理或关闭。"))
+            await send(content="⚠️ 本 Ticket 内消息数接近BOT记录上限（1000条），建议总结后重开 Ticket 继续讨论。 ⚠️")
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_900")
 
         if create_count >= self.create_limit and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_1000"):
-            await send(
-                content=(
-                    f"⚠️ 当前 ticket 快照已达到 {self.create_limit} 条 create 上限，后续新消息将不再继续记录 create 快照，但 edit/delete 仍会保留。"
-                )
-            )
+            await send(content="⚠️ 本 Ticket 消息数已达记录上限（1000条），新消息将不再被快照系统记录。 ⚠️")
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_1000")
             if self.logging_service is not None:
                 config = self.guild_repository.get_config(ticket.guild_id)

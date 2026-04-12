@@ -73,6 +73,7 @@ async def test_bootstrap_creates_resources_and_registers_scheduler_handlers(
         "runtime.cleanup_cooldowns",
         "runtime.cleanup_cache",
         "ticket.draft_timeout_sweep",
+        "ticket.draft_warning_sweep",
         "ticket.transfer_execute_sweep",
         "ticket.mute_expire_sweep",
         "ticket.archive_recovery_sweep",

@@ -47,7 +47,6 @@ def make_category(
         description=f"{category_key} description",
         staff_role_id=500,
         staff_user_ids_json="[]",
-        extra_welcome_text="hello",
         is_enabled=is_enabled,
         allowlist_role_ids_json="[]",
         denylist_role_ids_json="[]",

@@ -185,7 +185,6 @@ def prepared_close_cog_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -204,7 +203,7 @@ def prepared_close_cog_context(migrated_database):
     guild.add_member(creator)
     guild.add_member(staff_user)
 
-    channel = FakeChannel(9001, guild, name="ticket-0001-login-error")
+    channel = FakeChannel(9001, guild, name="login-error")
     ticket_repository.create(
         TicketRecord(
             ticket_id="1-support-0001",
@@ -282,7 +281,7 @@ async def test_close_current_ticket_by_creator_creates_request_and_returns_feedb
     assert stored.status is TicketStatus.SUBMITTED
     assert "已向 staff 发出关闭请求" in feedback["content"]
     assert prepared_close_cog_context["channel"].sent_messages
-    assert prepared_close_cog_context["channel"].sent_messages[0].embed.title == "📩 用户关闭请求"
+    assert prepared_close_cog_context["channel"].sent_messages[0].embed.title == "📩 归档并关闭请求"
     assert bot.resources.logging_service.info_messages
     assert "Ticket close request created." in bot.resources.logging_service.info_messages[0]
 

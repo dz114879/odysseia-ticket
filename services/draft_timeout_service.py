@@ -7,7 +7,12 @@ import logging
 from typing import Any
 from collections.abc import AsyncIterator
 
-from core.constants import DRAFT_ABANDON_TIMEOUT_HOURS, DRAFT_INACTIVE_CLOSE_HOURS
+from core.constants import (
+    DRAFT_ABANDON_TIMEOUT_HOURS,
+    DRAFT_ABANDON_WARNING_HOURS,
+    DRAFT_INACTIVE_CLOSE_HOURS,
+    DRAFT_INACTIVE_WARNING_HOURS,
+)
 from core.enums import TicketStatus
 from core.models import TicketRecord
 from db.connection import DatabaseManager
@@ -38,6 +43,7 @@ class DraftTimeoutService:
         self.ticket_repository = ticket_repository or TicketRepository(database)
         self.lock_manager = lock_manager
         self.logger = logger or logging.getLogger(__name__)
+        self._warned_ticket_ids: set[str] = set()
 
     async def handle_message(self, message: Any) -> TicketRecord | None:
         author = getattr(message, "author", None)
@@ -94,6 +100,53 @@ class DraftTimeoutService:
                 outcomes.append(outcome)
 
         return outcomes
+
+    async def sweep_draft_warnings(
+        self,
+        *,
+        now: datetime | str | None = None,
+    ) -> list[str]:
+        reference_time = self._to_utc_datetime(now)
+        warned: list[str] = []
+
+        for ticket in self.ticket_repository.list_by_statuses([TicketStatus.DRAFT]):
+            if ticket.ticket_id in self._warned_ticket_ids:
+                continue
+            try:
+                warning_msg = self._get_warning_message(ticket, reference_time)
+                if warning_msg is None:
+                    continue
+                channel = await self._resolve_channel(ticket.channel_id)
+                if channel is None:
+                    continue
+                send = getattr(channel, "send", None)
+                if send is not None:
+                    await send(content=warning_msg)
+                self._warned_ticket_ids.add(ticket.ticket_id)
+                warned.append(ticket.ticket_id)
+            except Exception:
+                self.logger.exception("Failed to send draft warning. ticket_id=%s", ticket.ticket_id)
+
+        return warned
+
+    @staticmethod
+    def _get_warning_message(ticket: TicketRecord, reference_time: datetime) -> str | None:
+        created_at = DraftTimeoutService._parse_iso_datetime(ticket.created_at)
+        if not ticket.has_user_message:
+            elapsed = reference_time - created_at
+            if timedelta(hours=DRAFT_ABANDON_WARNING_HOURS) <= elapsed < timedelta(hours=DRAFT_ABANDON_TIMEOUT_HOURS):
+                return (
+                    f"<@{ticket.creator_id}> 由于处于草稿期过久，您的 Ticket 将在 1 小时后被自动废弃。\n\n"
+                    "如果您已经完成草稿，但忘记提交，请使用标注消息下的按钮，尽快提交 Ticket; "
+                    "若按钮失效，也可以用 `/ticket submit` 斜杠命令提交。"
+                )
+            return None
+
+        last_msg_at = DraftTimeoutService._parse_iso_datetime(ticket.last_user_message_at or ticket.created_at)
+        elapsed = reference_time - last_msg_at
+        if timedelta(hours=DRAFT_INACTIVE_WARNING_HOURS) <= elapsed < timedelta(hours=DRAFT_INACTIVE_CLOSE_HOURS):
+            return f"<@{ticket.creator_id}> 由于您未发言，本 Ticket 将在 1 小时后被自动废弃。"
+        return None
 
     async def _apply_timeout_if_needed(
         self,

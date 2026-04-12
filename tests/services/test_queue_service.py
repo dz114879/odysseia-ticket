@@ -88,21 +88,18 @@ class FakeGuild:
 
 
 class FakeChannel:
-    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str, topic: str = "") -> None:
+    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str) -> None:
         self.id = channel_id
         self.guild = guild
         self.name = name
-        self.topic = topic
         self.next_message_id = 1000
         self.sent_messages: list[FakeMessage] = []
         self.permission_calls: list[dict] = []
         self.deleted = False
 
-    async def edit(self, *, name=None, topic=None, reason=None) -> None:
+    async def edit(self, *, name=None, reason=None, **kwargs) -> None:
         if name is not None:
             self.name = name
-        if topic is not None:
-            self.topic = topic
 
     async def send(self, *, content=None, embed=None, view=None) -> FakeMessage:
         message = FakeMessage(self.next_message_id, content=content, embed=embed, view=view)
@@ -175,7 +172,6 @@ def prepared_queue_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[301]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -190,8 +186,8 @@ def prepared_queue_context(migrated_database):
     guild.add_member(FakeMember(202))
     guild.add_member(FakeMember(301))
 
-    first_channel = FakeChannel(9001, guild, name="ticket-0001-first", topic="ticket_id=1-support-0001 creator_id=201 status=queued")
-    second_channel = FakeChannel(9002, guild, name="ticket-0002-second", topic="ticket_id=1-support-0002 creator_id=202 status=queued")
+    first_channel = FakeChannel(9001, guild, name="first")
+    second_channel = FakeChannel(9002, guild, name="second")
     ticket_repository.create(
         TicketRecord(
             ticket_id="1-support-0001",
@@ -250,7 +246,6 @@ async def test_process_next_queued_ticket_promotes_fifo_ticket_when_capacity_is_
     assert first_ticket is not None and first_ticket.status is TicketStatus.SUBMITTED
     assert first_ticket.queued_at is None
     assert second_ticket is not None and second_ticket.status is TicketStatus.QUEUED
-    assert channels[9001].topic == "ticket_id=1-support-0001 creator_id=201 status=submitted"
     assert channels[9001].sent_messages
     assert {call["target"].id for call in channels[9001].permission_calls} == {400, 500, 301}
 

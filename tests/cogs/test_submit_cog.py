@@ -66,21 +66,18 @@ class FakeGuild:
 
 
 class FakeChannel:
-    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str, topic: str) -> None:
+    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str) -> None:
         self.id = channel_id
         self.guild = guild
         self.name = name
-        self.topic = topic
         self.next_message_id = 1000
         self.sent_messages: list[FakeMessage] = []
         self.pinned_messages: list[FakeMessage] = []
         self.permission_calls: list[dict] = []
 
-    async def edit(self, *, name=None, topic=None, reason=None) -> None:
+    async def edit(self, *, name=None, reason=None, **kwargs) -> None:
         if name is not None:
             self.name = name
-        if topic is not None:
-            self.topic = topic
 
     async def send(self, *, content=None, embed=None, view=None) -> FakeMessage:
         message = FakeMessage(self.next_message_id, content=content, embed=embed, view=view)
@@ -193,7 +190,6 @@ def prepared_submit_cog_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -224,8 +220,7 @@ def prepared_submit_cog_context(migrated_database):
     channel = FakeChannel(
         9001,
         guild,
-        name="ticket-support-0001",
-        topic="ticket_id=1-support-0001 creator_id=201 status=draft",
+        name="技术支持",
     )
     welcome_message = FakeMessage(
         5001,
@@ -283,7 +278,7 @@ async def test_submit_current_draft_submits_after_channel_has_custom_name(
     bot = FakeBot(database)
     cog = SubmitCog(bot)
     channel = prepared_submit_cog_context["channel"]
-    channel.name = "ticket-0001-existing-title"
+    channel.name = "existing-title"
     interaction = FakeInteraction(
         bot=bot,
         guild=prepared_submit_cog_context["guild"],
@@ -296,7 +291,7 @@ async def test_submit_current_draft_submits_after_channel_has_custom_name(
     stored = TicketRepository(database).get_by_ticket_id(prepared_submit_cog_context["ticket"].ticket_id)
     assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
     assert interaction.followup.messages
-    assert "draft ticket 已提交" in interaction.followup.messages[0]["content"]
+    assert "Ticket 已提交" in interaction.followup.messages[0]["content"]
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
 

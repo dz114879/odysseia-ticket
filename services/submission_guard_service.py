@@ -72,7 +72,7 @@ class SubmissionGuardService:
             ticket=ticket,
             config=config,
             category=category,
-            requires_title=self.requires_title_completion(ticket=ticket, channel_name=channel_name),
+            requires_title=self.requires_title_completion(channel_name=channel_name, category_display_name=category.display_name),
         )
 
     def inspect_queued_promotion(
@@ -117,36 +117,7 @@ class SubmissionGuardService:
         return config, category
 
     @staticmethod
-    def requires_title_completion(*, ticket: TicketRecord, channel_name: str | None) -> bool:
+    def requires_title_completion(*, channel_name: str | None, category_display_name: str) -> bool:
         if not channel_name:
             return False
-
-        ticket_number = SubmissionGuardService._extract_ticket_number(ticket.ticket_id)
-        if ticket_number is None:
-            return False
-
-        expected_name = SubmissionGuardService._build_default_channel_name(
-            category_key=ticket.category_key,
-            ticket_number=ticket_number,
-        )
-        return channel_name == expected_name
-
-    @staticmethod
-    def _extract_ticket_number(ticket_id: str) -> int | None:
-        _, _, suffix = ticket_id.rpartition("-")
-        if not suffix.isdigit():
-            return None
-        return int(suffix)
-
-    @staticmethod
-    def _build_default_channel_name(*, category_key: str, ticket_number: int) -> str:
-        slug = SubmissionGuardService._slugify(category_key)
-        return f"ticket-{slug}-{ticket_number:04d}"[:95]
-
-    @staticmethod
-    def _slugify(value: str) -> str:
-        normalized = [character.lower() if character.isalnum() else "-" for character in value]
-        slug = "".join(normalized).strip("-")
-        while "--" in slug:
-            slug = slug.replace("--", "-")
-        return slug or "ticket"
+        return channel_name == category_display_name

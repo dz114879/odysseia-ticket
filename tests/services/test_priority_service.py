@@ -109,7 +109,6 @@ def prepared_priority_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -143,7 +142,7 @@ def prepared_priority_context(migrated_database):
             priority=TicketPriority.MEDIUM,
         )
     )
-    channel = FakeChannel(ticket.channel_id or 9001, guild, name="ticket-0001-login-error")
+    channel = FakeChannel(ticket.channel_id or 9001, guild, name="login-error")
 
     return {
         "database": migrated_database,
@@ -175,8 +174,8 @@ async def test_set_priority_updates_ticket_and_channel_prefix(prepared_priority_
     assert result.channel_name_changed is True
     assert result.old_priority is TicketPriority.MEDIUM
     assert result.new_priority is TicketPriority.HIGH
-    assert result.new_channel_name == "🔴|ticket-0001-login-error"
-    assert channel.name == "🔴|ticket-0001-login-error"
+    assert result.new_channel_name == "🔴|login-error"
+    assert channel.name == "🔴|login-error"
     assert channel.edit_calls[0]["reason"] == "Set ticket 1-support-0001 priority to high"
     assert stored is not None
     assert stored.priority is TicketPriority.HIGH
@@ -191,7 +190,7 @@ async def test_set_priority_replaces_existing_priority_prefix(prepared_priority_
     database = prepared_priority_context["database"]
     channel = prepared_priority_context["channel"]
     staff_member = prepared_priority_context["staff_member"]
-    channel.name = "🟡|ticket-0001-login-error"
+    channel.name = "🟡|login-error"
     service = PriorityService(database, lock_manager=LockManager())
 
     result = await service.set_priority(
@@ -201,8 +200,8 @@ async def test_set_priority_replaces_existing_priority_prefix(prepared_priority_
     )
 
     assert result.changed is True
-    assert result.new_channel_name == "🟢|ticket-0001-login-error"
-    assert channel.name == "🟢|ticket-0001-login-error"
+    assert result.new_channel_name == "🟢|login-error"
+    assert channel.name == "🟢|login-error"
 
 
 @pytest.mark.asyncio
@@ -212,7 +211,7 @@ async def test_set_priority_is_noop_when_priority_and_prefix_are_already_current
     database = prepared_priority_context["database"]
     channel = prepared_priority_context["channel"]
     staff_member = prepared_priority_context["staff_member"]
-    channel.name = "🟡|ticket-0001-login-error"
+    channel.name = "🟡|login-error"
     staff_panel_service = FakeStaffPanelService()
     service = PriorityService(database, lock_manager=LockManager(), staff_panel_service=staff_panel_service)
 

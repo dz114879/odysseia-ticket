@@ -70,8 +70,8 @@ async def test_rename_draft_ticket_updates_channel_name_and_ticket_timestamp(
 
     assert result.changed is True
     assert result.old_name == "ticket-support-0001"
-    assert result.new_name == "ticket-0001-登录异常-复现"
-    assert prepared_draft_context.name == "ticket-0001-登录异常-复现"
+    assert result.new_name == "登录异常-复现"
+    assert prepared_draft_context.name == "登录异常-复现"
     assert prepared_draft_context.edit_calls[0]["reason"] == "Rename draft ticket 1-support-0001"
     assert stored is not None
     assert stored.updated_at != "2024-01-01T00:00:00+00:00"
@@ -98,7 +98,7 @@ async def test_rename_draft_ticket_is_noop_when_name_already_matches(
 
     assert first.changed is True
     assert second.changed is False
-    assert second.new_name == "ticket-0001-登录异常-复现"
+    assert second.new_name == "登录异常-复现"
     assert len(prepared_draft_context.edit_calls) == 1
 
 

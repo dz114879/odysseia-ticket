@@ -406,6 +406,6 @@ async def test_snapshot_service_emits_threshold_warnings_and_stops_create_after_
 
     assert len([record for record in records if record["event"] == "create"]) == 3
     assert len(channel.sent_messages) == 2
-    assert "接近上限" in channel.sent_messages[0]
-    assert "已达到 3 条 create 上限" in channel.sent_messages[1]
+    assert "接近BOT记录上限" in channel.sent_messages[0]
+    assert "已达记录上限" in channel.sent_messages[1]
     assert len(logging_service.ticket_logs) == 1

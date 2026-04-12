@@ -120,7 +120,6 @@ def prepared_close_request_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -140,7 +139,7 @@ def prepared_close_request_context(migrated_database):
     for member in (creator, staff_member, outsider):
         guild.add_member(member)
 
-    channel = FakeChannel(9001, guild, name="ticket-0001-login-error")
+    channel = FakeChannel(9001, guild, name="login-error")
     ticket = ticket_repository.create(
         TicketRecord(
             ticket_id="1-support-0001",
@@ -187,7 +186,7 @@ async def test_request_close_creates_pending_message_with_buttons(prepared_close
 
     assert result.request_message is not None
     assert result.replaced_message_id is None
-    assert result.request_message.embed.title == "📩 用户关闭请求"
+    assert result.request_message.embed.title == "📩 归档并关闭请求"
     assert result.request_message.view is not None
     assert service._pending_request_message_ids[channel.id] == result.request_message.id
 

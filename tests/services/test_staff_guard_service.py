@@ -63,7 +63,6 @@ def prepared_staff_guard_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[302]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",

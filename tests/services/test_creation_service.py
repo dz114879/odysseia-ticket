@@ -36,10 +36,11 @@ class FakeCategoryChannel:
 
 
 class FakeMessage:
-    def __init__(self, message_id: int, channel: FakeTextChannel, *, content: str, view=None) -> None:
+    def __init__(self, message_id: int, channel: FakeTextChannel, *, content: str, embed=None, view=None) -> None:
         self.id = message_id
         self.channel = channel
         self.content = content
+        self.embed = embed
         self.view = view
         self.pinned = False
 
@@ -56,14 +57,12 @@ class FakeTextChannel:
         name: str,
         category: FakeCategoryChannel,
         overwrites,
-        topic: str | None,
     ) -> None:
         self.id = channel_id
         self.guild = guild
         self.name = name
         self.category = category
         self.overwrites = overwrites
-        self.topic = topic
         self.messages: list[FakeMessage] = []
         self.deleted = False
 
@@ -71,8 +70,8 @@ class FakeTextChannel:
     def mention(self) -> str:
         return f"<#{self.id}>"
 
-    async def send(self, *, content: str, view=None) -> FakeMessage:
-        message = FakeMessage(1000 + len(self.messages), self, content=content, view=view)
+    async def send(self, *, content: str, embed=None, view=None) -> FakeMessage:
+        message = FakeMessage(1000 + len(self.messages), self, content=content, embed=embed, view=view)
         self.messages.append(message)
         return message
 
@@ -113,7 +112,6 @@ class FakeGuild:
         *,
         category: FakeCategoryChannel,
         overwrites,
-        topic: str | None = None,
         reason: str | None = None,
     ) -> FakeTextChannel:
         channel = FakeTextChannel(
@@ -122,7 +120,6 @@ class FakeGuild:
             name=name,
             category=category,
             overwrites=overwrites,
-            topic=topic,
         )
         self.channels[channel.id] = channel
         self.created_channels.append(channel)
@@ -161,7 +158,6 @@ def prepared_creation_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请描述复现步骤。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -214,7 +210,7 @@ async def test_create_draft_ticket_happy_path_persists_ticket_and_private_channe
     assert result.ticket.status is TicketStatus.DRAFT
     assert result.ticket.channel_id == channel.id
     assert result.ticket.ticket_id == "1-support-0001"
-    assert channel.name == "ticket-support-0001"
+    assert channel.name == "技术支持"
     assert channel.category.id == 300
     assert channel.overwrites[guild.default_role].view_channel is False
     assert channel.overwrites[guild.get_role(400)].view_channel is False
@@ -224,8 +220,8 @@ async def test_create_draft_ticket_happy_path_persists_ticket_and_private_channe
     assert result.welcome_message is not None
     assert result.welcome_message.pinned is True
     assert result.welcome_message.view is not None
-    assert "技术支持" in result.welcome_message.content
-    assert "请描述复现步骤。" in result.welcome_message.content
+    assert result.welcome_message.embed is not None
+    assert "技术支持" in result.welcome_message.embed.title
     assert counter is not None
     assert counter.next_number == 2
 

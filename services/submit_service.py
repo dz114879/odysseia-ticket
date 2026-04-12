@@ -285,12 +285,10 @@ class SubmitService:
         next_name = current_name
         if requested_title:
             next_name = DraftService.build_renamed_channel_name(
-                ticket=context.ticket,
                 requested_name=requested_title,
             )
 
         edit_kwargs: dict[str, object] = {
-            "topic": self._build_channel_topic(context.ticket, status=TicketStatus.SUBMITTED),
             "reason": (f"Promote queued ticket {context.ticket.ticket_id}" if from_queue else f"Submit draft ticket {context.ticket.ticket_id}"),
         }
         if next_name != current_name:
@@ -315,12 +313,10 @@ class SubmitService:
         next_name = current_name
         if requested_title:
             next_name = DraftService.build_renamed_channel_name(
-                ticket=context.ticket,
                 requested_name=requested_title,
             )
 
         edit_kwargs: dict[str, object] = {
-            "topic": self._build_channel_topic(context.ticket, status=TicketStatus.QUEUED),
             "reason": f"Queue ticket {context.ticket.ticket_id} after submit request",
         }
         if next_name != current_name:
@@ -357,9 +353,9 @@ class SubmitService:
             content=(
                 "━━━━━━━━━━━━━━━━━━\n"
                 + (
-                    f"queued ticket `{ticket.ticket_id}` 已自动出队并正式提交，staff 现在可以查看并接手处理。\n"
+                    "✅ 您的 Ticket 已从排队中自动提交 ！\n\n相关管理员现在可以查看并处理。\n\n=== 草稿期分界线 ===\n"
                     if from_queue
-                    else f"draft ticket `{ticket.ticket_id}` 已提交，staff 现在可以查看并接手处理。\n"
+                    else "✅ 您的 Ticket 已成功提交 ！\n\n请稍候，相关管理员会前来处理。\n\n在此期间，请勿重复提交相同主题的Ticket。感谢您的理解和支持。\n\n=== 草稿期分界线 ===\n"
                 )
                 + "━━━━━━━━━━━━━━━━━━"
             )
@@ -395,10 +391,6 @@ class SubmitService:
         if not pinned_messages:
             return None
 
-        for message in pinned_messages:
-            content = getattr(message, "content", "") or ""
-            if ticket_id in content:
-                return message
         return pinned_messages[0]
 
     @staticmethod
@@ -415,10 +407,6 @@ class SubmitService:
         except Exception:
             return False
         return True
-
-    @staticmethod
-    def _build_channel_topic(ticket: TicketRecord, *, status: TicketStatus) -> str:
-        return f"ticket_id={ticket.ticket_id} creator_id={ticket.creator_id} status={status.value}"
 
     def _enqueue_ticket(self, ticket_id: str) -> QueueTicketResult:
         if self.queue_service is not None:

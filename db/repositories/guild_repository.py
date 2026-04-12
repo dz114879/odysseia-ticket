@@ -40,7 +40,6 @@ class GuildRepository(BaseRepository):
             description=row["description"],
             staff_role_id=row["staff_role_id"],
             staff_user_ids_json=row["staff_user_ids_json"],
-            extra_welcome_text=row["extra_welcome_text"],
             is_enabled=from_db_bool(row["is_enabled"]),
             allowlist_role_ids_json=row["allowlist_role_ids_json"],
             denylist_role_ids_json=row["denylist_role_ids_json"],
@@ -235,20 +234,18 @@ class GuildRepository(BaseRepository):
                     description,
                     staff_role_id,
                     staff_user_ids_json,
-                    extra_welcome_text,
                     is_enabled,
                     allowlist_role_ids_json,
                     denylist_role_ids_json,
                     sort_order
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id, category_key) DO UPDATE SET
                     display_name = excluded.display_name,
                     emoji = excluded.emoji,
                     description = excluded.description,
                     staff_role_id = excluded.staff_role_id,
                     staff_user_ids_json = excluded.staff_user_ids_json,
-                    extra_welcome_text = excluded.extra_welcome_text,
                     is_enabled = excluded.is_enabled,
                     allowlist_role_ids_json = excluded.allowlist_role_ids_json,
                     denylist_role_ids_json = excluded.denylist_role_ids_json,
@@ -262,7 +259,6 @@ class GuildRepository(BaseRepository):
                     record.description,
                     record.staff_role_id,
                     record.staff_user_ids_json,
-                    record.extra_welcome_text,
                     to_db_bool(record.is_enabled),
                     record.allowlist_role_ids_json,
                     record.denylist_role_ids_json,
@@ -294,13 +290,12 @@ class GuildRepository(BaseRepository):
                         description,
                         staff_role_id,
                         staff_user_ids_json,
-                        extra_welcome_text,
                         is_enabled,
                         allowlist_role_ids_json,
                         denylist_role_ids_json,
                         sort_order
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     (
                         guild_id,
@@ -310,7 +305,6 @@ class GuildRepository(BaseRepository):
                         category.description,
                         category.staff_role_id,
                         category.staff_user_ids_json,
-                        category.extra_welcome_text,
                         to_db_bool(category.is_enabled),
                         category.allowlist_role_ids_json,
                         category.denylist_role_ids_json,

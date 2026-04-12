@@ -75,7 +75,6 @@ class RenameService:
 
             old_name = str(getattr(channel, "name", "") or "")
             new_name = self.build_renamed_channel_name(
-                ticket=context.ticket,
                 current_channel_name=old_name,
                 requested_name=requested_name,
             )
@@ -114,7 +113,6 @@ class RenameService:
     @staticmethod
     def build_renamed_channel_name(
         *,
-        ticket: Any,
         current_channel_name: str,
         requested_name: str,
     ) -> str:
@@ -122,12 +120,9 @@ class RenameService:
         normalized = DraftService._slugify(requested_name)
         if not normalized:
             raise ValidationError("新的 ticket 标题不能为空，也不能只包含 emoji 或符号。")
-
-        ticket_number = DraftService._extract_ticket_number(ticket.ticket_id)
-        ticket_prefix = f"ticket-{ticket_number}-" if ticket_number else "ticket-"
-        max_slug_length = max(1, 95 - len(prefix) - len(ticket_prefix))
+        max_slug_length = max(1, 95 - len(prefix))
         trimmed_slug = normalized[:max_slug_length].strip("-") or "ticket"
-        return f"{prefix}{ticket_prefix}{trimmed_slug}"[:95]
+        return f"{prefix}{trimmed_slug}"[:95]
 
     @staticmethod
     def _detect_preserved_prefix(channel_name: str) -> str:

@@ -93,7 +93,6 @@ class GuildConfigService:
                 description=template.description,
                 staff_role_id=None,
                 staff_user_ids_json="[]",
-                extra_welcome_text=template.extra_welcome_text,
                 is_enabled=template.is_enabled,
                 allowlist_role_ids_json="[]",
                 denylist_role_ids_json="[]",

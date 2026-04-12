@@ -39,7 +39,7 @@ class ClosingNoticeView(discord.ui.View):
         except Exception:
             pass
 
-    @discord.ui.button(label="撤销关闭", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="⏪ 撤销", style=discord.ButtonStyle.secondary, row=0)
     async def revoke_button(
         self,
         interaction: discord.Interaction,
@@ -98,7 +98,7 @@ class CloseRequestView(discord.ui.View):
             reason=self.request_reason,
         )
 
-    @discord.ui.button(label="同意关闭", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="✅ 同意", style=discord.ButtonStyle.danger, row=0)
     async def approve_button(
         self,
         interaction: discord.Interaction,
@@ -129,7 +129,7 @@ class CloseRequestView(discord.ui.View):
 
         await _send_ephemeral(interaction, build_close_feedback_message(result))
 
-    @discord.ui.button(label="拒绝请求", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="❌ 拒绝", style=discord.ButtonStyle.secondary, row=0)
     async def reject_button(
         self,
         interaction: discord.Interaction,

@@ -211,7 +211,6 @@ def prepared_close_context(migrated_database):
             description="处理技术问题",
             staff_role_id=500,
             staff_user_ids_json="[]",
-            extra_welcome_text="请说明具体错误。",
             is_enabled=True,
             allowlist_role_ids_json="[]",
             denylist_role_ids_json="[]",
@@ -231,7 +230,7 @@ def prepared_close_context(migrated_database):
     for member in (creator, staff_member, admin_member):
         guild.add_member(member)
 
-    channel = FakeTextChannel(9001, guild, name="ticket-0001-login-error")
+    channel = FakeTextChannel(9001, guild, name="login-error")
     archive_channel = FakeTextChannel(2001, guild, name="ticket-archives")
     ticket = ticket_repository.create(
         TicketRecord(
@@ -310,7 +309,7 @@ async def test_initiate_close_updates_ticket_locks_permissions_and_posts_notice(
     assert stored.closed_at is not None
     assert {call["target_id"] for call in channel.permission_calls} == {201, 400, 500}
     assert channel.sent_messages
-    assert channel.sent_messages[0].embed.title == "🔒 Ticket 正在关闭中"
+    assert channel.sent_messages[0].embed.title == "🔒 Ticket 即将归档并关闭"
     assert staff_panel_service.requested_ticket_ids == [stored.ticket_id]
 
 

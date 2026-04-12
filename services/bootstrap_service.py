@@ -242,6 +242,10 @@ class BootstrapService:
             self._run_draft_timeout_sweep,
         )
         self.scheduler.register_handler(
+            "ticket.draft_warning_sweep",
+            self._run_draft_warning_sweep,
+        )
+        self.scheduler.register_handler(
             "ticket.transfer_execute_sweep",
             self._run_transfer_execute_sweep,
         )
@@ -350,6 +354,17 @@ class BootstrapService:
             self.logging_service.log_local_info(
                 "Processed %s expired draft ticket(s).",
                 len(outcomes),
+            )
+
+    async def _run_draft_warning_sweep(self) -> None:
+        if self.draft_timeout_service is None or self.logging_service is None:
+            return
+
+        warned = await self.draft_timeout_service.sweep_draft_warnings()
+        if warned:
+            self.logging_service.log_local_info(
+                "Sent draft timeout warnings for %s ticket(s).",
+                len(warned),
             )
 
     async def _run_transfer_execute_sweep(self) -> None:
