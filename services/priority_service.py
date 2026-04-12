@@ -159,6 +159,8 @@ class PriorityService:
     def get_priority_prefix(priority: TicketPriority) -> str:
         if priority is TicketPriority.SLEEP:
             raise ValidationError("sleep 不是可手动设置的 ticket 优先级，请改用后续 sleep 功能。")
+        if priority is TicketPriority.UNSET:
+            return ""
         prefix = PRIORITY_CHANNEL_PREFIXES.get(priority)
         if prefix is None:
             raise ValidationError("不支持的 ticket 优先级。")
@@ -167,6 +169,7 @@ class PriorityService:
     @staticmethod
     def get_priority_label(priority: TicketPriority) -> str:
         labels = {
+            TicketPriority.UNSET: "未设定 ⚪",
             TicketPriority.LOW: "低 🟢",
             TicketPriority.MEDIUM: "中 🟡",
             TicketPriority.HIGH: "高 🔴",
@@ -184,11 +187,15 @@ class PriorityService:
     @staticmethod
     def _coerce_priority(priority: TicketPriority | str) -> TicketPriority:
         if isinstance(priority, TicketPriority):
-            return priority
-        try:
-            return TicketPriority(priority)
-        except ValueError as exc:
-            raise ValidationError("不支持的 ticket 优先级。") from exc
+            result = priority
+        else:
+            try:
+                result = TicketPriority(priority)
+            except ValueError as exc:
+                raise ValidationError("不支持的 ticket 优先级。") from exc
+        if result is TicketPriority.UNSET:
+            raise ValidationError("unset 不是可手动设置的 ticket 优先级。")
+        return result
 
     @asynccontextmanager
     async def _acquire_channel_lock(self, channel_id: int) -> AsyncIterator[None]:

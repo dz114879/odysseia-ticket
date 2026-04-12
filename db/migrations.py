@@ -254,6 +254,12 @@ def _migration_v10_add_archive_failure_tracking(connection: sqlite3.Connection) 
     _execute_statements(connection, _MIGRATION_V10_STATEMENTS)
 
 
+def _migration_v11_change_default_priority_to_unset(connection: sqlite3.Connection) -> None:
+    # SQLite 不支持 ALTER COLUMN DEFAULT，但新行将由应用层 dataclass 默认值 'unset' 控制。
+    # 已有 ticket 保持原 priority 不变，无需迁移数据。
+    pass
+
+
 def _validate_migration_plan(ordered_migrations: Sequence[Migration]) -> None:
     latest_declared_version = ordered_migrations[-1].version if ordered_migrations else 0
     if latest_declared_version != CURRENT_SCHEMA_VERSION:
@@ -310,6 +316,11 @@ MIGRATIONS = [
         version=10,
         name="add_archive_failure_tracking",
         operation=_migration_v10_add_archive_failure_tracking,
+    ),
+    Migration(
+        version=11,
+        name="change_default_priority_to_unset",
+        operation=_migration_v11_change_default_priority_to_unset,
     ),
 ]
 

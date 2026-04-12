@@ -25,6 +25,7 @@ class TicketStatus(StrEnum):
 
 
 class TicketPriority(StrEnum):
+    UNSET = "unset"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

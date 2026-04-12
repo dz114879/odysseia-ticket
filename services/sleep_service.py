@@ -320,11 +320,12 @@ class SleepService:
         current_priority = getattr(ticket, "priority", None)
         if isinstance(current_priority, TicketPriority) and current_priority is not TicketPriority.SLEEP:
             return current_priority
-        return TicketPriority.MEDIUM
+        return TicketPriority.UNSET
 
     @staticmethod
     def get_priority_label(priority: TicketPriority) -> str:
         labels = {
+            TicketPriority.UNSET: "未设定 ⚪",
             TicketPriority.LOW: "低 🟢",
             TicketPriority.MEDIUM: "中 🟡",
             TicketPriority.HIGH: "高 🔴",

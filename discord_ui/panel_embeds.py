@@ -167,6 +167,7 @@ def _format_ticket_priority_label(ticket: TicketRecord) -> str:
 
 def _format_priority_label(priority: TicketPriority) -> str:
     labels = {
+        TicketPriority.UNSET: "未设定 ⚪",
         TicketPriority.LOW: "低 🟢",
         TicketPriority.MEDIUM: "中 🟡",
         TicketPriority.HIGH: "高 🔴",

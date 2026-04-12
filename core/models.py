@@ -18,7 +18,7 @@ class TicketRecord:
     has_user_message: bool = False
     last_user_message_at: str | None = None
     claimed_by: int | None = None
-    priority: TicketPriority = TicketPriority.MEDIUM
+    priority: TicketPriority = TicketPriority.UNSET
     priority_before_sleep: TicketPriority | None = None
     status_before: TicketStatus | None = None
     transfer_target_category: str | None = None

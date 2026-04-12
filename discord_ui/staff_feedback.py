@@ -131,6 +131,7 @@ def build_untransfer_success_message(result: TransferCancellationResult) -> str:
 
 def _get_priority_label(priority: TicketPriority) -> str:
     labels = {
+        TicketPriority.UNSET: "未设定 ⚪",
         TicketPriority.LOW: "低 🟢",
         TicketPriority.MEDIUM: "中 🟡",
         TicketPriority.HIGH: "高 🔴",

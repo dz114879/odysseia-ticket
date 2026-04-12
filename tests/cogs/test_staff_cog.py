@@ -481,13 +481,13 @@ async def test_sleep_current_ticket_updates_status_and_returns_feedback(
     feedback = assert_deferred_ephemeral_followup(interaction)
 
     assert "ticket 已进入 sleep" in feedback["content"]
-    assert "睡前优先级：中 🟡" in feedback["content"]
+    assert "睡前优先级：未设定 ⚪" in feedback["content"]
     assert channel.name == "💤|ticket-0001-login-error"
     assert channel.edit_calls[0]["reason"] == "Put ticket 1-support-0001 to sleep"
     assert stored is not None
     assert stored.status is TicketStatus.SLEEP
     assert stored.priority is TicketPriority.SLEEP
-    assert stored.priority_before_sleep is TicketPriority.MEDIUM
+    assert stored.priority_before_sleep is TicketPriority.UNSET
     assert bot.resources.logging_service.info_messages
     assert "Ticket entered sleep." in bot.resources.logging_service.info_messages[0]
 
