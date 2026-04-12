@@ -67,6 +67,7 @@ def test_setup_guild_creates_initialized_config_and_default_categories(
     )
 
     assert result.created_default_categories is True
+    assert result.is_reconfiguration is False
     assert result.config.guild_id == 1
     assert result.config.is_initialized is True
     assert result.config.log_channel_id == 100
@@ -112,7 +113,35 @@ def test_setup_guild_keeps_existing_categories(
     )
 
     assert result.created_default_categories is False
+    assert result.is_reconfiguration is False
     assert [category.category_key for category in result.categories] == ["custom"]
+
+
+def test_setup_guild_reconfiguration_flags_existing_config(
+    migrated_database,
+    fake_guild: FakeGuild,
+) -> None:
+    service = SetupService(migrated_database)
+
+    first_result = service.setup_guild(
+        fake_guild,
+        log_channel_id=100,
+        archive_channel_id=200,
+        ticket_category_channel_id=300,
+        admin_role_id=400,
+    )
+    assert first_result.is_reconfiguration is False
+
+    second_result = service.setup_guild(
+        fake_guild,
+        log_channel_id=100,
+        archive_channel_id=200,
+        ticket_category_channel_id=300,
+        admin_role_id=400,
+    )
+    assert second_result.is_reconfiguration is True
+    assert second_result.created_default_categories is False
+    assert len(second_result.categories) == len(first_result.categories)
 
 
 def test_setup_guild_rejects_missing_setup_targets(migrated_database) -> None:

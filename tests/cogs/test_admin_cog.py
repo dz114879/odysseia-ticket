@@ -139,3 +139,29 @@ async def test_run_setup_persists_config_and_categories(migrated_database) -> No
     assert len(categories) == 5
     assert interaction.response.messages
     assert "Ticket setup 已完成" in interaction.response.messages[0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_run_setup_reconfiguration_shows_updated_message(migrated_database) -> None:
+    bot = FakeBot(migrated_database)
+    cog = AdminCog(bot)
+
+    first_interaction = FakeInteraction(FakeGuild(1), FakeUser(42, administrator=True))
+    await cog.run_setup(
+        first_interaction,
+        log_channel=FakeChannel(100),
+        archive_channel=FakeChannel(200),
+        ticket_category=FakeChannel(300),
+        admin_role=FakeRole(400),
+    )
+    assert "Ticket setup 已完成" in first_interaction.response.messages[0]["content"]
+
+    second_interaction = FakeInteraction(FakeGuild(1), FakeUser(42, administrator=True))
+    await cog.run_setup(
+        second_interaction,
+        log_channel=FakeChannel(100),
+        archive_channel=FakeChannel(200),
+        ticket_category=FakeChannel(300),
+        admin_role=FakeRole(400),
+    )
+    assert "Ticket 配置已更新" in second_interaction.response.messages[0]["content"]

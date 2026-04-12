@@ -15,6 +15,7 @@ class SetupResult:
     config: GuildConfigRecord
     categories: list[TicketCategoryConfig]
     created_default_categories: bool
+    is_reconfiguration: bool
 
 
 class SetupService:
@@ -51,6 +52,12 @@ class SetupService:
         )
 
         with self.database.session() as connection:
+            previous_config = self.guild_config_service.get_config(
+                guild.id,
+                connection=connection,
+            )
+            is_reconfiguration = previous_config is not None and previous_config.is_initialized
+
             existing_categories = self.guild_config_service.list_categories(
                 guild.id,
                 connection=connection,
@@ -86,4 +93,5 @@ class SetupService:
             config=config,
             categories=categories,
             created_default_categories=created_default_categories,
+            is_reconfiguration=is_reconfiguration,
         )

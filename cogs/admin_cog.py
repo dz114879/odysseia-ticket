@@ -71,17 +71,24 @@ class AdminCog(commands.Cog):
             await self._send_ephemeral(interaction, str(exc))
             return
 
+        log_title = "服务器配置已更新" if result.is_reconfiguration else "服务器初始化完成"
+        log_description = (
+            f"管理员 <@{interaction.user.id}> 更新了服务器配置。"
+            if result.is_reconfiguration
+            else f"管理员 <@{interaction.user.id}> 完成了服务器设置。"
+        )
         self.logging_service.log_local_info(
-            "Guild setup completed. guild_id=%s admin_role_id=%s default_categories=%s",
+            "Guild setup completed. guild_id=%s admin_role_id=%s default_categories=%s reconfiguration=%s",
             guild.id,
             admin_role.id,
             len(result.categories),
+            result.is_reconfiguration,
         )
         await self.logging_service.send_guild_log(
             guild.id,
             "info",
-            "服务器初始化完成",
-            f"管理员 <@{interaction.user.id}> 完成了服务器设置。",
+            log_title,
+            log_description,
             channel_id=result.config.log_channel_id,
             extra={"admin_role_id": str(admin_role.id), "categories": str(len(result.categories))},
         )
@@ -107,8 +114,9 @@ class AdminCog(commands.Cog):
     def _build_setup_success_message(result: SetupResult) -> str:
         category_summary = "、".join(category.display_name for category in result.categories[:5])
         created_text = "已写入默认分类模板。" if result.created_default_categories else "保留了已有分类配置。"
+        heading = "Ticket 配置已更新。" if result.is_reconfiguration else "Ticket setup 已完成。"
         return (
-            "Ticket setup 已完成。\n"
+            f"{heading}\n"
             f"- 管理员角色：<@&{result.config.admin_role_id}>\n"
             f"- 日志频道：<#{result.config.log_channel_id}>\n"
             f"- 归档频道：<#{result.config.archive_channel_id}>\n"
