@@ -9,6 +9,7 @@ from cogs.draft_cog import DraftCog
 from core.enums import TicketStatus
 from core.models import TicketRecord
 from db.repositories.ticket_repository import TicketRepository
+from discord_ui.draft_views import DraftAbandonConfirmView
 from runtime.locks import LockManager
 
 
@@ -20,16 +21,19 @@ class FakeResponse:
     def is_done(self) -> bool:
         return self._done
 
-    async def send_message(self, content: str, *, ephemeral: bool) -> None:
+    async def send_message(self, content: str, *, ephemeral: bool, view: object | None = None) -> None:
         self._done = True
-        self.messages.append({"content": content, "ephemeral": ephemeral})
+        self.messages.append({"content": content, "ephemeral": ephemeral, "view": view})
+
+    async def defer(self, *, ephemeral: bool, thinking: bool = False) -> None:
+        self._done = True
 
 
 class FakeFollowup:
     def __init__(self) -> None:
         self.messages: list[dict] = []
 
-    async def send(self, content: str, *, ephemeral: bool) -> None:
+    async def send(self, content: str, *, ephemeral: bool, view: object | None = None) -> None:
         self.messages.append({"content": content, "ephemeral": ephemeral})
 
 
@@ -136,33 +140,33 @@ async def test_rename_current_draft_updates_channel_and_returns_feedback(
 
 
 @pytest.mark.asyncio
-async def test_abandon_current_draft_requires_confirm_flag(prepared_draft_cog_context) -> None:
+async def test_abandon_current_draft_sends_confirmation_prompt(prepared_draft_cog_context) -> None:
     bot, guild, channel = prepared_draft_cog_context
     cog = DraftCog(bot)
     interaction = FakeInteraction(guild, channel, FakeUser(42))
 
-    await cog.abandon_current_draft(interaction, confirm=False)
+    await cog.abandon_current_draft(interaction)
 
     assert interaction.response.messages
-    assert "请将 confirm 设为 true" in interaction.response.messages[0]["content"]
+    assert "永久删除" in interaction.response.messages[0]["content"]
+    assert isinstance(interaction.response.messages[0]["view"], DraftAbandonConfirmView)
     assert channel.deleted is False
 
 
 @pytest.mark.asyncio
-async def test_abandon_current_draft_deletes_channel_and_updates_ticket(
+async def test_abandon_confirm_button_deletes_channel_and_updates_ticket(
     prepared_draft_cog_context,
     migrated_database,
 ) -> None:
     bot, guild, channel = prepared_draft_cog_context
-    cog = DraftCog(bot)
+    view = DraftAbandonConfirmView()
     interaction = FakeInteraction(guild, channel, FakeUser(42))
+    interaction.client = bot
 
-    await cog.abandon_current_draft(interaction, confirm=True)
+    await view.confirm_button.callback(interaction)
 
     stored = TicketRepository(migrated_database).get_by_channel_id(channel.id)
 
-    assert interaction.response.messages
-    assert "draft ticket 已废弃" in interaction.response.messages[0]["content"]
     assert channel.deleted is True
     assert stored is not None
     assert stored.status is TicketStatus.ABANDONED

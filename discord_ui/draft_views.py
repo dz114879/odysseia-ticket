@@ -11,6 +11,7 @@ from core.errors import (
     TicketNotFoundError,
     ValidationError,
 )
+from services.draft_service import DraftAbandonResult, DraftService
 from services.submission_guard_service import SubmissionGuardService
 from services.submit_service import SubmitDraftResult, SubmitService
 
@@ -131,6 +132,54 @@ class DraftWelcomeView(discord.ui.View):
     def __init__(self) -> None:
         super().__init__(timeout=None)
         self.add_item(DraftSubmitButton())
+
+
+def build_abandon_feedback_message(result: DraftAbandonResult) -> str:
+    deleted_text = "频道已删除。" if result.channel_deleted else "频道删除失败，请手动处理。"
+    return f"draft ticket 已废弃。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 结果：{deleted_text}"
+
+
+class DraftAbandonConfirmView(discord.ui.View):
+    def __init__(self, *, timeout: float = 60.0) -> None:
+        super().__init__(timeout=timeout)
+
+    @discord.ui.button(label="确认废弃", style=discord.ButtonStyle.danger)
+    async def confirm_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        del button
+        try:
+            channel = _require_channel(interaction)
+            draft_service = _build_draft_service(interaction)
+            await _defer_ephemeral(interaction)
+            result = await draft_service.abandon_draft_ticket(
+                channel,
+                actor_id=interaction.user.id,
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            PermissionDeniedError,
+            ValidationError,
+            discord.HTTPException,
+        ) as exc:
+            await _send_ephemeral(interaction, str(exc))
+            return
+
+        try:
+            await _send_ephemeral(interaction, build_abandon_feedback_message(result))
+        except discord.HTTPException:
+            pass
+
+
+def _build_draft_service(interaction: discord.Interaction) -> DraftService:
+    resources = _require_resources(interaction)
+    return DraftService(
+        resources.database,
+        lock_manager=getattr(resources, "lock_manager", None),
+    )
 
 
 def _build_guard_service(interaction: discord.Interaction) -> SubmissionGuardService:
