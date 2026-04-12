@@ -54,7 +54,7 @@ def build_closing_notice_embed(
     embed = discord.Embed(
         title="🔒 Ticket 正在关闭中",
         description=(
-            "当前频道已进入关闭撤销窗口，期间会锁定所有非 Bot 用户发言。\n若需撤销，请让合法 staff 在窗口结束前使用 `/ticket close-cancel`。"
+            "当前频道已进入关闭撤销窗口，期间会锁定所有非 Bot 用户发言。\n若需撤销，请点击下方「撤销关闭」按钮或使用 `/ticket close-cancel`。"
         ),
         color=discord.Color.red(),
     )
@@ -85,6 +85,23 @@ def build_archive_record_embed(ticket: TicketRecord) -> discord.Embed:
     if ticket.claimed_by is not None:
         embed.add_field(name="最终认领者", value=f"<@{ticket.claimed_by}>", inline=True)
     embed.add_field(name="最终状态", value=_format_status_label(ticket.status), inline=True)
+    return embed
+
+
+def build_closing_revoked_embed(
+    ticket: TicketRecord,
+    *,
+    revoked_by_id: int,
+    restored_status: TicketStatus,
+) -> discord.Embed:
+    embed = discord.Embed(
+        title="↩️ Ticket 关闭已撤销",
+        description="关闭流程已被撤销，频道权限已恢复。",
+        color=discord.Color.dark_grey(),
+    )
+    embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)
+    embed.add_field(name="撤销者", value=f"<@{revoked_by_id}>", inline=True)
+    embed.add_field(name="恢复状态", value=_format_status_label(restored_status), inline=True)
     return embed
 
 

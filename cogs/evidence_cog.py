@@ -25,15 +25,15 @@ class EvidenceCog(commands.Cog):
         self.access_service = TicketAccessService(resources.database)
 
     async def cog_load(self) -> None:
-        self.history_command.binding = self
+        self.message_history_command.binding = self
         self.recycle_bin_command.binding = self
         self.notes_add_command.binding = self
         self.notes_check_command.binding = self
 
-    @ticket_group.command(name="history", description="查看当前 ticket 中指定消息的快照时间线")
+    @ticket_group.command(name="message-history", description="查看当前 ticket 中指定消息的快照时间线")
     @app_commands.guild_only()
     @app_commands.describe(message_id="要查询的 Discord 消息 ID")
-    async def history_command(self, interaction: discord.Interaction, message_id: str) -> None:
+    async def message_history_command(self, interaction: discord.Interaction, message_id: str) -> None:
         try:
             parsed_id = int(message_id)
         except ValueError:
@@ -124,6 +124,7 @@ class EvidenceCog(commands.Cog):
             content=rendered,
             filename=f"{context.ticket.ticket_id}-recycle-bin.txt",
             prefer_file=True,
+            file_message="已生成本 ticket 内所有被删除消息快照，请尽快下载",
         )
 
     async def add_note(self, interaction: discord.Interaction, *, content: str) -> None:
@@ -223,6 +224,7 @@ class EvidenceCog(commands.Cog):
         content: str,
         filename: str,
         prefer_file: bool = False,
+        file_message: str = "内容较长，已附带文本文件。",
     ) -> None:
         if not prefer_file and len(content) <= 1800:
             await interaction.followup.send(content, ephemeral=True)
@@ -230,7 +232,7 @@ class EvidenceCog(commands.Cog):
 
         file = discord.File(io.BytesIO(content.encode("utf-8")), filename=filename)
         await interaction.followup.send(
-            "内容较长，已附带文本文件。",
+            file_message,
             ephemeral=True,
             file=file,
         )

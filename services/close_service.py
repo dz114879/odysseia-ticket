@@ -22,7 +22,8 @@ from services.queue_service import QueueService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
-from discord_ui.close_embeds import build_closing_notice_embed
+from discord_ui.close_embeds import build_closing_notice_embed, build_closing_revoked_embed
+from discord_ui.close_views import ClosingNoticeView
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +95,7 @@ class CloseService:
             lock_manager=lock_manager,
             logger=self.logger.getChild("archive"),
         )
+        self._closing_notice_messages: dict[str, Any] = {}
 
     async def initiate_close(
         self,
@@ -230,6 +232,12 @@ class CloseService:
                 channel,
                 context=context,
                 ticket=updated_ticket,
+            )
+            await self._edit_closing_notice_as_revoked(
+                context.ticket.ticket_id,
+                ticket=updated_ticket,
+                revoked_by_id=actor_id,
+                restored_status=restored_status,
             )
             log_message = await self._send_channel_log(
                 channel,
@@ -391,15 +399,47 @@ class CloseService:
         send = getattr(channel, "send", None)
         if send is None:
             return None
-        return await send(
+        view = ClosingNoticeView(
+            close_service=self,
+            ticket_id=ticket.ticket_id,
+            timeout=float(CLOSE_REVOKE_WINDOW_SECONDS),
+        )
+        message = await send(
             embed=build_closing_notice_embed(
                 ticket,
                 initiated_by_id=initiated_by_id,
                 reason=ticket.close_reason,
                 close_execute_at=ticket.close_execute_at or "未知",
                 requested_by_id=requested_by_id,
-            )
+            ),
+            view=view,
         )
+        view.bind_message(message)
+        self._closing_notice_messages[ticket.ticket_id] = message
+        return message
+
+    async def _edit_closing_notice_as_revoked(
+        self,
+        ticket_id: str,
+        *,
+        ticket: TicketRecord,
+        revoked_by_id: int,
+        restored_status: TicketStatus,
+    ) -> None:
+        notice_msg = self._closing_notice_messages.pop(ticket_id, None)
+        if notice_msg is None:
+            return
+        try:
+            await notice_msg.edit(
+                embed=build_closing_revoked_embed(
+                    ticket,
+                    revoked_by_id=revoked_by_id,
+                    restored_status=restored_status,
+                ),
+                view=None,
+            )
+        except Exception:
+            self.logger.debug("Failed to edit closing notice for %s", ticket_id, exc_info=True)
 
     @staticmethod
     async def _send_channel_log(channel: Any, *, content: str) -> Any | None:

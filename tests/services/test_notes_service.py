@@ -40,5 +40,5 @@ async def test_notes_service_adds_and_formats_notes(tmp_path) -> None:
     assert result.record["content"] == "需要后续转交账单组"
     assert result.is_claimer is True
     assert "helper" in rendered
-    assert "⭐ claimer" in rendered
+    assert "⭐" in rendered
     assert "需要后续转交账单组" in rendered

@@ -260,7 +260,7 @@ async def test_show_recycle_bin_prefers_file_payload(prepared_evidence_cog_conte
 
     assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
     payload = interaction.followup.messages[0]
-    assert payload["content"] == "内容较长，已附带文本文件。"
+    assert payload["content"] == "已生成本 ticket 内所有被删除消息快照，请尽快下载"
     assert payload["ephemeral"] is True
     assert payload["file"] is not None
     assert payload["file"].filename == "1-support-0001-recycle-bin.txt"
@@ -326,5 +326,5 @@ async def test_add_note_and_check_notes_for_staff(prepared_evidence_cog_context)
     assert payload["ephemeral"] is True
     assert payload["file"] is None
     assert "Ticket `1-support-0001` 内部备注（共 1 条）" in str(payload["content"])
-    assert "helper (301) ⭐ claimer" in str(payload["content"])
+    assert "helper (301) ⭐" in str(payload["content"])
     assert "需要继续观察" in str(payload["content"])

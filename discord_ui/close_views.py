@@ -11,7 +11,61 @@ from core.errors import (
     TicketNotFoundError,
     ValidationError,
 )
-from discord_ui.close_feedback import build_close_feedback_message
+from discord_ui.close_feedback import build_close_feedback_message, build_revoke_close_feedback_message
+
+
+class ClosingNoticeView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        close_service,
+        ticket_id: str,
+        timeout: float,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self.close_service = close_service
+        self.ticket_id = ticket_id
+        self.message: Any | None = None
+
+    def bind_message(self, message: Any) -> None:
+        self.message = message
+
+    async def on_timeout(self) -> None:
+        self.close_service._closing_notice_messages.pop(self.ticket_id, None)
+        if self.message is None:
+            return
+        try:
+            await self.message.edit(view=None)
+        except Exception:
+            pass
+
+    @discord.ui.button(label="撤销关闭", style=discord.ButtonStyle.secondary, row=0)
+    async def revoke_button(
+        self,
+        interaction: discord.Interaction,
+        button: discord.ui.Button,
+    ) -> None:
+        del button
+        try:
+            channel = _require_channel(interaction)
+            await _defer_ephemeral(interaction)
+            result = await self.close_service.revoke_close(
+                channel,
+                actor=interaction.user,
+                is_bot_owner=await interaction.client.is_owner(interaction.user),
+            )
+        except (
+            TicketNotFoundError,
+            InvalidTicketStateError,
+            StaleInteractionError,
+            PermissionDeniedError,
+            ValidationError,
+            discord.HTTPException,
+        ) as exc:
+            await _send_ephemeral(interaction, str(exc))
+            return
+
+        await _send_ephemeral(interaction, build_revoke_close_feedback_message(result))
 
 
 class CloseRequestView(discord.ui.View):

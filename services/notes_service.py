@@ -76,7 +76,7 @@ class NotesService:
 
         lines = [f"Ticket `{ticket.ticket_id}` 内部备注（共 {len(notes)} 条）", ""]
         for index, note in enumerate(notes, start=1):
-            claimer_marker = " ⭐ claimer" if note.get("is_claimer") else ""
+            claimer_marker = " ⭐" if note.get("is_claimer") else ""
             lines.extend(
                 [
                     f"[{index}] {note.get('author_name', 'Unknown')} ({note.get('author_id', 'unknown')}){claimer_marker}",
