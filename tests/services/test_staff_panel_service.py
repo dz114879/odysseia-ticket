@@ -180,7 +180,9 @@ async def test_refresh_now_updates_staff_panel_embed_with_latest_ticket_state(
     assert get_panel_child(message.view, "claim").disabled is False
     assert get_panel_child(message.view, "unclaim").disabled is False
     assert get_panel_child(message.view, "priority").disabled is False
-    assert get_panel_child(message.view, "help").disabled is False
+    assert get_panel_child(message.view, "sleep").disabled is False
+    assert get_panel_child(message.view, "close").disabled is False
+    assert get_panel_child(message.view, "rename").disabled is False
 
 
 @pytest.mark.asyncio
@@ -211,7 +213,9 @@ async def test_refresh_now_renders_sleep_status_and_previous_priority(
     assert get_panel_child(message.view, "claim").disabled is True
     assert get_panel_child(message.view, "unclaim").disabled is True
     assert get_panel_child(message.view, "priority").disabled is True
-    assert get_panel_child(message.view, "help").disabled is False
+    assert get_panel_child(message.view, "sleep").disabled is True
+    assert get_panel_child(message.view, "close").disabled is False
+    assert get_panel_child(message.view, "rename").disabled is False
 
 
 @pytest.mark.asyncio
@@ -250,7 +254,9 @@ async def test_refresh_now_renders_transferring_status_with_target_category(
     assert get_panel_child(message.view, "claim").disabled is True
     assert get_panel_child(message.view, "unclaim").disabled is True
     assert get_panel_child(message.view, "priority").disabled is True
-    assert get_panel_child(message.view, "help").disabled is False
+    assert get_panel_child(message.view, "sleep").disabled is True
+    assert get_panel_child(message.view, "close").disabled is True
+    assert get_panel_child(message.view, "rename").disabled is True
 
 
 @pytest.mark.asyncio

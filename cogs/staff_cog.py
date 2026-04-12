@@ -187,7 +187,7 @@ class StaffCog(commands.Cog):
     async def untransfer_command(self, interaction: discord.Interaction) -> None:
         await self.untransfer_current_ticket(interaction)
 
-    @ticket_group.command(name="help", description="查看当前 ticket 工作流帮助")
+    @ticket_group.command(name="help", description="查看 ticket 工作流帮助（内容可能未及时更新）")
     @app_commands.guild_only()
     async def help_command(self, interaction: discord.Interaction) -> None:
         await self.show_ticket_help(interaction)

@@ -11,7 +11,6 @@ from core.models import GuildConfigRecord, TicketCategoryConfig, TicketMuteRecor
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
-from discord_ui.help_text import build_ticket_help_message
 from discord_ui.staff_panel_view import StaffPanelView, build_staff_panel_custom_id
 from runtime.locks import LockManager
 
@@ -660,24 +659,6 @@ async def test_staff_panel_claim_button_updates_ticket_and_returns_feedback(
     assert stored is not None
     assert stored.claimed_by == staff_user.id
     assert "ticket 已认领" in feedback["content"]
-
-
-@pytest.mark.asyncio
-async def test_staff_panel_help_button_returns_shared_help_text(prepared_staff_cog_context) -> None:
-    bot = prepared_staff_cog_context["bot"]
-    guild = prepared_staff_cog_context["guild"]
-    channel = prepared_staff_cog_context["channel"]
-    creator = prepared_staff_cog_context["creator"]
-    panel_message = prepared_staff_cog_context["panel_message"]
-    view = StaffPanelView()
-    help_button = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("help"))
-    interaction = FakeInteraction(guild, channel, creator, bot=bot, message=panel_message)
-
-    await help_button.callback(interaction)
-
-    assert interaction.response.messages
-    assert interaction.response.messages[0]["content"] == build_ticket_help_message()
-    assert "自动执行" in interaction.response.messages[0]["content"]
 
 
 @pytest.mark.asyncio

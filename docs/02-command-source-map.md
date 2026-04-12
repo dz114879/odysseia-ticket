@@ -104,12 +104,15 @@ Persistent view: `DraftWelcomeView` (line 130, `timeout=None`, registered in `Su
 
 | Component | custom_id Pattern | Line | Trigger | Call Chain |
 |-----------|-------------------|------|---------|------------|
-| `StaffClaimButton` | `staff:claim` | 47 | Staff clicks "Claim" | `ClaimService.claim_ticket()` |
-| `StaffUnclaimButton` | `staff:unclaim` | 82 | Staff clicks "Unclaim" | `ClaimService.unclaim_ticket()` |
-| `StaffHelpButton` | `staff:help` | 117 | Staff clicks "Help" | No service call; directly calls `build_ticket_help_message()` |
-| `StaffPrioritySelect` | `staff:priority` | 137 | Staff selects a priority from the dropdown | `PriorityService.set_priority()` |
+| `StaffClaimButton` | `staff:claim` | 55 | Staff clicks "Claim" | `ClaimService.claim_ticket()` |
+| `StaffUnclaimButton` | `staff:unclaim` | 90 | Staff clicks "Unclaim" | `ClaimService.unclaim_ticket()` |
+| `StaffSleepButton` | `staff:sleep` | 125 | Staff clicks "Sleep" | `SleepService.sleep_ticket()` |
+| `StaffCloseButton` | `staff:close` | 160 | Staff clicks "Close" | `CloseService.initiate_close()` |
+| `StaffRenameButton` | `staff:rename` | 230 | Staff clicks "Rename" | Opens `StaffRenameModal` |
+| `StaffRenameModal` | (Modal) | 195 | Staff submits a new title | `RenameService.rename_ticket()` |
+| `StaffPrioritySelect` | `staff:priority` | 251 | Staff selects a priority from the dropdown | `PriorityService.set_priority()` |
 
-Persistent view: `StaffPanelView` (line 175, `timeout=None`, registered in `StaffCog.__init__`)
+Persistent view: `StaffPanelView` (line 289, `timeout=None`, registered in `StaffCog.__init__`)
 
 All panel button actions are checked for message staleness through `StaffPanelService.assert_current_panel_interaction()` before execution.
 

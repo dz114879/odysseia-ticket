@@ -253,7 +253,7 @@ async def test_submit_draft_ticket_happy_path_updates_status_permissions_and_mes
     assert result.staff_panel_message.embed is not None
     assert result.staff_panel_message.embed.title == "🛠️ Staff 控制面板"
     assert isinstance(result.staff_panel_message.view, StaffPanelView)
-    assert len(result.staff_panel_message.view.children) == 4
+    assert len(result.staff_panel_message.view.children) == 6
 
 
 @pytest.mark.asyncio
