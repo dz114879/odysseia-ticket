@@ -19,6 +19,9 @@ class FakeResponse:
     def is_done(self) -> bool:
         return self._done
 
+    async def defer(self, *, ephemeral: bool = False, thinking: bool = False) -> None:
+        self._done = True
+
     async def send_message(self, content: str, *, ephemeral: bool) -> None:
         self._done = True
         self.messages.append({"content": content, "ephemeral": ephemeral})
@@ -180,8 +183,8 @@ async def test_create_panel_in_channel_requires_ticket_admin_role(prepared_panel
 
     await cog.create_panel_in_channel(interaction)
 
-    assert interaction.response.messages
-    assert "只有 Ticket 管理员角色或 Bot 所有者" in interaction.response.messages[0]["content"]
+    assert interaction.followup.messages
+    assert "只有 Ticket 管理员角色或 Bot 所有者" in interaction.followup.messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -191,15 +194,15 @@ async def test_create_refresh_and_remove_panel_flow(prepared_panel_context, migr
     interaction = FakeInteraction(guild, channel, FakeUser(42, role_ids=[400]))
 
     await cog.create_panel_in_channel(interaction)
-    assert "公开 Ticket 面板已创建" in interaction.response.messages[0]["content"]
+    assert "公开 Ticket 面板已创建" in interaction.followup.messages[0]["content"]
 
     refresh_interaction = FakeInteraction(guild, channel, FakeUser(42, role_ids=[400]))
     await cog.refresh_panel(refresh_interaction)
-    assert "已刷新 active panel" in refresh_interaction.response.messages[0]["content"]
+    assert "已刷新 active panel" in refresh_interaction.followup.messages[0]["content"]
 
     remove_interaction = FakeInteraction(guild, channel, FakeUser(42, role_ids=[400]))
     await cog.remove_panel(remove_interaction, delete_message=False)
-    assert "已移除 active panel" in remove_interaction.response.messages[0]["content"]
+    assert "已移除 active panel" in remove_interaction.followup.messages[0]["content"]
 
     repository = PanelRepository(migrated_database)
     assert repository.get_active_panel(1) is None

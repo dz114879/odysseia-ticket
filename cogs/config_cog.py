@@ -30,6 +30,7 @@ class ConfigCog(commands.Cog):
         await self.run_config(interaction)
 
     async def run_config(self, interaction: discord.Interaction) -> None:
+        await self._defer_ephemeral(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_permission(interaction)
@@ -83,6 +84,12 @@ class ConfigCog(commands.Cog):
         if interaction.guild is None:
             raise ValidationError("该命令只能在服务器中使用。")
         return interaction.guild
+
+    @staticmethod
+    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
+        if interaction.response.is_done():
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
     @staticmethod
     async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:

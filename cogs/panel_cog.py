@@ -49,6 +49,7 @@ class PanelCog(commands.Cog):
         await self.remove_panel(interaction, delete_message=delete_message)
 
     async def create_panel_in_channel(self, interaction: discord.Interaction) -> None:
+        await self._defer_ephemeral(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
@@ -74,6 +75,7 @@ class PanelCog(commands.Cog):
         await self._send_ephemeral(interaction, self._build_create_success_message(result))
 
     async def refresh_panel(self, interaction: discord.Interaction) -> None:
+        await self._defer_ephemeral(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
@@ -106,6 +108,7 @@ class PanelCog(commands.Cog):
         *,
         delete_message: bool = False,
     ) -> None:
+        await self._defer_ephemeral(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
@@ -178,6 +181,13 @@ class PanelCog(commands.Cog):
     def _build_remove_success_message(result: PanelRemovalResult) -> str:
         deleted_text = "并已删除原消息。" if result.message_deleted else "原消息保留但已失效。"
         return f"已移除 active panel，{deleted_text}"
+
+    @staticmethod
+    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
+        """尽早 defer 交互，防止 Discord 3 秒超时导致 404 Unknown Interaction。"""
+        if interaction.response.is_done():
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
     @staticmethod
     async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:

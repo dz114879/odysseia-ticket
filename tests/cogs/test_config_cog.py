@@ -14,6 +14,7 @@ from db.repositories.guild_repository import GuildRepository
 class FakeResponse:
     def __init__(self) -> None:
         self.messages: list[dict] = []
+        self.deferred: list[dict] = []
         self._done = False
 
     def is_done(self) -> bool:
@@ -22,6 +23,10 @@ class FakeResponse:
     async def send_message(self, content: str | None = None, *, embed=None, view=None, ephemeral: bool = False) -> None:
         self._done = True
         self.messages.append({"content": content, "embed": embed, "view": view, "ephemeral": ephemeral})
+
+    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
+        self._done = True
+        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
 
 
 class FakeFollowup:
@@ -106,8 +111,9 @@ async def test_run_config_no_guild(migrated_database) -> None:
 
     await cog.run_config(interaction)
 
-    assert interaction.response.messages
-    msg = interaction.response.messages[0]
+    assert interaction.response.deferred
+    assert interaction.followup.messages
+    msg = interaction.followup.messages[0]
     assert msg["ephemeral"] is True
     assert "服务器" in msg["content"]
 
@@ -124,8 +130,9 @@ async def test_run_config_no_permission(migrated_database) -> None:
 
     await cog.run_config(interaction)
 
-    assert interaction.response.messages
-    msg = interaction.response.messages[0]
+    assert interaction.response.deferred
+    assert interaction.followup.messages
+    msg = interaction.followup.messages[0]
     assert msg["ephemeral"] is True
     # The permission error mentions admin role / administrator / Bot owner
     assert "管理" in msg["content"] or "权限" in msg["content"] or "所有者" in msg["content"]
@@ -149,8 +156,9 @@ async def test_run_config_not_initialized(migrated_database) -> None:
 
     await cog.run_config(interaction)
 
-    assert interaction.response.messages
-    msg = interaction.response.messages[0]
+    assert interaction.response.deferred
+    assert interaction.followup.messages
+    msg = interaction.followup.messages[0]
     assert msg["ephemeral"] is True
     assert "setup" in msg["content"].lower() or "初始化" in msg["content"] or "尚未完成" in msg["content"]
 
@@ -167,8 +175,9 @@ async def test_run_config_success(migrated_database) -> None:
 
     await cog.run_config(interaction)
 
-    assert interaction.response.messages
-    msg = interaction.response.messages[0]
+    assert interaction.response.deferred
+    assert interaction.followup.messages
+    msg = interaction.followup.messages[0]
     assert msg["ephemeral"] is True
     # Success path sends embed + view, not a text content string
     assert msg["embed"] is not None
