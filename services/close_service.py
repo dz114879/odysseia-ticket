@@ -144,7 +144,8 @@ class CloseService:
 
             normalized_reason = self._normalize_reason(reason)
             close_started_at = datetime.now(timezone.utc)
-            close_execute_at = (close_started_at + timedelta(seconds=CLOSE_REVOKE_WINDOW_SECONDS)).isoformat()
+            revoke_window = context.config.close_revoke_window_seconds if context.config else CLOSE_REVOKE_WINDOW_SECONDS
+            close_execute_at = (close_started_at + timedelta(seconds=revoke_window)).isoformat()
             updated_ticket = (
                 self.ticket_repository.update(
                     context.ticket.ticket_id,
@@ -165,6 +166,7 @@ class CloseService:
                     ticket=updated_ticket,
                     initiated_by_id=actor_id,
                     requested_by_id=requested_by_id,
+                    close_revoke_window_seconds=revoke_window,
                 )
             except Exception:
                 await self._rollback_close_start(channel, context=context)
@@ -395,6 +397,7 @@ class CloseService:
         ticket: TicketRecord,
         initiated_by_id: int,
         requested_by_id: int | None,
+        close_revoke_window_seconds: int = CLOSE_REVOKE_WINDOW_SECONDS,
     ) -> Any | None:
         send = getattr(channel, "send", None)
         if send is None:
@@ -402,7 +405,7 @@ class CloseService:
         view = ClosingNoticeView(
             close_service=self,
             ticket_id=ticket.ticket_id,
-            timeout=float(CLOSE_REVOKE_WINDOW_SECONDS),
+            timeout=float(close_revoke_window_seconds),
         )
         message = await send(
             embed=build_closing_notice_embed(
@@ -411,6 +414,7 @@ class CloseService:
                 reason=ticket.close_reason,
                 close_execute_at=ticket.close_execute_at or "未知",
                 requested_by_id=requested_by_id,
+                close_revoke_window_seconds=close_revoke_window_seconds,
             ),
             view=view,
         )

@@ -298,23 +298,21 @@ class ArchiveRenderService:
         edits_by_message_id = annotations.get("edits_by_message_id", {}) if isinstance(annotations, dict) else {}
         deleted_messages = annotations.get("deleted_messages", []) if isinstance(annotations, dict) else []
 
-        timeline: list[dict[str, Any]] = []
-        for msg in messages:
-            timeline.append({**msg, "_deleted": False, "_edits": []})
-        for del_msg in deleted_messages:
-            timeline.append(
-                {
-                    "message_id": del_msg.get("message_id"),
-                    "author_name": del_msg.get("author_name", "Unknown"),
-                    "author_id": del_msg.get("author_id"),
-                    "created_at": del_msg.get("timestamp", "unknown"),
-                    "content": del_msg.get("content", ""),
-                    "attachments": del_msg.get("attachments") or [],
-                    "embeds": [],
-                    "_deleted": True,
-                    "_edits": del_msg.get("edits") or [],
-                }
-            )
+        timeline: list[dict[str, Any]] = [{**msg, "_deleted": False, "_edits": []} for msg in messages]
+        timeline.extend(
+            {
+                "message_id": del_msg.get("message_id"),
+                "author_name": del_msg.get("author_name", "Unknown"),
+                "author_id": del_msg.get("author_id"),
+                "created_at": del_msg.get("timestamp", "unknown"),
+                "content": del_msg.get("content", ""),
+                "attachments": del_msg.get("attachments") or [],
+                "embeds": [],
+                "_deleted": True,
+                "_edits": del_msg.get("edits") or [],
+            }
+            for del_msg in deleted_messages
+        )
 
         def _mid_sort_key(entry: dict[str, Any]) -> int:
             try:
@@ -519,13 +517,13 @@ class ArchiveRenderService:
             parts.append(f"<div class='embed-title'>{html.escape(embed_data['title'])}</div>")
         if "description" in embed_data:
             parts.append(f"<div class='embed-description'>{html.escape(embed_data['description'])}</div>")
-        for field in embed_data.get("fields", []):
-            parts.append(
-                f"<div class='embed-field'>"
-                f"<div class='embed-field-name'>{html.escape(field.get('name', ''))}</div>"
-                f"<div class='embed-field-value'>{html.escape(field.get('value', ''))}</div>"
-                f"</div>"
-            )
+        parts.extend(
+            f"<div class='embed-field'>"
+            f"<div class='embed-field-name'>{html.escape(field.get('name', ''))}</div>"
+            f"<div class='embed-field-value'>{html.escape(field.get('value', ''))}</div>"
+            f"</div>"
+            for field in embed_data.get("fields", [])
+        )
         if "footer" in embed_data:
             parts.append(f"<div class='embed-footer'>{html.escape(embed_data['footer'])}</div>")
         parts.append("</div>")

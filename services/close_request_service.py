@@ -89,13 +89,14 @@ class CloseRequestService:
             requester_id=actor_id,
             request_reason=normalized_reason,
             channel_id=channel_id,
-            timeout=CLOSE_REQUEST_TIMEOUT_SECONDS,
+            timeout=context.config.close_request_timeout_seconds if context.config else CLOSE_REQUEST_TIMEOUT_SECONDS,
         )
         request_message = await send(
             embed=build_close_request_embed(
                 context.ticket,
                 requester_id=actor_id,
                 reason=normalized_reason,
+                close_request_timeout_seconds=context.config.close_request_timeout_seconds if context.config else CLOSE_REQUEST_TIMEOUT_SECONDS,
             ),
             view=view,
         )

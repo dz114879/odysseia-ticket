@@ -6,21 +6,32 @@ from core.enums import TicketStatus
 from core.models import TicketRecord
 
 
+def _format_minutes(seconds: int) -> str:
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return f"{minutes} 分钟"
+    return f"{seconds} 秒"
+
+
 def build_close_request_embed(
     ticket: TicketRecord,
     *,
     requester_id: int,
     reason: str | None,
+    close_request_timeout_seconds: int = 300,
+    custom_text: str | None = None,
 ) -> discord.Embed:
+    timeout_label = _format_minutes(close_request_timeout_seconds)
+    default_description = f"<@{requester_id}> 希望关闭此 Ticket，理由：{reason or '未提供'}\n\n请处理人员在{timeout_label}内审核此请求。"
     embed = discord.Embed(
         title="📩 归档并关闭请求",
-        description=(f"<@{requester_id}> 希望关闭此 Ticket，理由：{reason or '未提供'}\n\n请处理人员在5分钟内审核此请求。"),
+        description=custom_text if custom_text is not None else default_description,
         color=discord.Color.orange(),
     )
     embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)
     embed.add_field(name="当前状态", value=_format_status_label(ticket.status), inline=True)
     embed.add_field(name="发起人", value=f"<@{requester_id}>", inline=True)
-    embed.set_footer(text="请求有效期 5 分钟；若 staff 直接执行 /ticket close，旧请求会自动失效。")
+    embed.set_footer(text=f"请求有效期 {timeout_label}；若 staff 直接执行 /ticket close，旧请求会自动失效。")
     return embed
 
 
@@ -49,12 +60,19 @@ def build_closing_notice_embed(
     reason: str | None,
     close_execute_at: str,
     requested_by_id: int | None = None,
+    close_revoke_window_seconds: int = 120,
+    custom_text: str | None = None,
 ) -> discord.Embed:
+    revoke_label = _format_minutes(close_revoke_window_seconds)
+    default_description = (
+        f"<@{initiated_by_id}> 已确认关闭本 Ticket，理由: {reason or '未提供'}\n\n"
+        f"本频道将在{revoke_label}后关闭阅读权限，并开始归档；\n\n"
+        f"归档完成后，您可以下载归档文件，随后频道将被完全删除。\n\n"
+        f"如果这是误操作引起的，请立刻点击下方按钮，撤销关闭流程："
+    )
     embed = discord.Embed(
         title="🔒 Ticket 即将归档并关闭",
-        description=(
-            f"<@{initiated_by_id}> 已确认关闭本 Ticket，理由: {reason or '未提供'}\n\n本频道将在2分钟后关闭阅读权限，并开始归档；\n\n归档完成后，您可以下载归档文件，随后频道将被完全删除。\n\n如果这是误操作引起的，请立刻点击下方按钮，撤销关闭流程："
-        ),
+        description=custom_text if custom_text is not None else default_description,
         color=discord.Color.red(),
     )
     embed.add_field(name="Ticket ID", value=f"`{ticket.ticket_id}`", inline=False)

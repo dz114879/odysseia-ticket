@@ -3,17 +3,17 @@ from __future__ import annotations
 from core.constants import TRANSFER_EXECUTION_DELAY_SECONDS
 
 
-def _format_transfer_delay_text() -> str:
-    if TRANSFER_EXECUTION_DELAY_SECONDS % 60 == 0:
-        minutes = TRANSFER_EXECUTION_DELAY_SECONDS // 60
+def _format_transfer_delay_text(delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS) -> str:
+    if delay_seconds % 60 == 0:
+        minutes = delay_seconds // 60
         if minutes == 1:
             return "1 分钟"
         return f"{minutes} 分钟"
-    return f"{TRANSFER_EXECUTION_DELAY_SECONDS} 秒"
+    return f"{delay_seconds} 秒"
 
 
-def build_ticket_help_message() -> str:
-    transfer_delay_text = _format_transfer_delay_text()
+def build_ticket_help_message(*, transfer_delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS) -> str:
+    transfer_delay_text = _format_transfer_delay_text(transfer_delay_seconds)
     return (
         "📘 Ticket 命令帮助\n\n"
         "当前可用命令：\n"

@@ -54,8 +54,6 @@ class SnapshotService:
         cache: RuntimeCacheStore | None = None,
         logging_service: LoggingService | None = None,
         logger: logging.Logger | None = None,
-        create_warning_threshold: int = SNAPSHOT_CREATE_WARNING_THRESHOLD,
-        create_limit: int = SNAPSHOT_CREATE_LIMIT,
     ) -> None:
         self.database = database
         self.snapshot_store = snapshot_store or SnapshotStore()
@@ -65,8 +63,6 @@ class SnapshotService:
         self.cache = cache or RuntimeCacheStore()
         self.logging_service = logging_service
         self.logger = logger or logging.getLogger(__name__)
-        self.create_warning_threshold = create_warning_threshold
-        self.create_limit = create_limit
 
     async def bootstrap_from_channel_history(
         self,
@@ -90,6 +86,11 @@ class SnapshotService:
                     skipped=True,
                 )
 
+            # 从公会配置获取快照阈值
+            config = self.guild_repository.get_config(ticket.guild_id)
+            warning_threshold = config.snapshot_warning_threshold if config else SNAPSHOT_CREATE_WARNING_THRESHOLD
+            limit = config.snapshot_limit if config else SNAPSHOT_CREATE_LIMIT
+
             raw_messages = await self._collect_channel_history(channel)
             create_records: list[dict[str, Any]] = []
             latest_states: dict[int, SnapshotLatestState] = {}
@@ -97,7 +98,7 @@ class SnapshotService:
             for message in raw_messages:
                 if self._should_ignore_message(message):
                     continue
-                if create_count >= self.create_limit:
+                if create_count >= limit:
                     break
                 record = self._build_create_record(message)
                 message_id = self._coerce_message_id(record.get("message_id"))
@@ -112,7 +113,7 @@ class SnapshotService:
             for message_id, latest_state in latest_states.items():
                 self.cache.remember_snapshot_state(channel_id, message_id, latest_state)
             self.cache.set_snapshot_message_count(channel_id, create_count)
-            self._restore_threshold_flags(channel_id, create_count)
+            self._restore_threshold_flags(channel_id, create_count, warning_threshold=warning_threshold, limit=limit)
 
             bootstrapped_at = utc_now_iso()
             updated_ticket = (
@@ -151,8 +152,12 @@ class SnapshotService:
             if self._resolve_latest_state(current_ticket, channel_id, message_id) is not None:
                 return False
 
+            # 从公会配置获取快照上限
+            config = self.guild_repository.get_config(current_ticket.guild_id)
+            limit = config.snapshot_limit if config else SNAPSHOT_CREATE_LIMIT
+
             current_count = self._ensure_message_count_cache(current_ticket)
-            if current_count >= self.create_limit:
+            if current_count >= limit:
                 await self._maybe_send_threshold_notifications(
                     channel=getattr(message, "channel", None),
                     ticket=current_ticket,
@@ -372,10 +377,20 @@ class SnapshotService:
         tickets = self.ticket_repository.list_by_statuses(_ACTIVE_SNAPSHOT_STATUSES)
         restored_tickets = 0
         cached_messages = 0
+        # 按公会缓存配置，避免重复查询
+        guild_config_cache: dict[int, Any] = {}
         for ticket in tickets:
             channel_id = ticket.channel_id
             if channel_id is None:
                 continue
+
+            # 获取公会快照阈值配置
+            if ticket.guild_id not in guild_config_cache:
+                guild_config_cache[ticket.guild_id] = self.guild_repository.get_config(ticket.guild_id)
+            config = guild_config_cache[ticket.guild_id]
+            warning_threshold = config.snapshot_warning_threshold if config else SNAPSHOT_CREATE_WARNING_THRESHOLD
+            limit = config.snapshot_limit if config else SNAPSHOT_CREATE_LIMIT
+
             self.cache.clear_ticket_snapshot_state(channel_id)
             records = self.snapshot_store.read_records(ticket.ticket_id)
             if not records:
@@ -407,7 +422,7 @@ class SnapshotService:
             for message_id, latest_state in latest_states.items():
                 self.cache.remember_snapshot_state(channel_id, message_id, latest_state)
             self.cache.set_snapshot_message_count(channel_id, create_count)
-            self._restore_threshold_flags(channel_id, create_count)
+            self._restore_threshold_flags(channel_id, create_count, warning_threshold=warning_threshold, limit=limit)
             cached_messages += len(latest_states)
             restored_tickets += 1
             if ticket.message_count != create_count:
@@ -496,29 +511,50 @@ class SnapshotService:
         if channel_id is None or send is None:
             return
 
-        if create_count >= self.create_warning_threshold and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_900"):
-            await send(content="⚠️ 本 Ticket 内消息数接近BOT记录上限（1000条），建议总结后重开 Ticket 继续讨论。 ⚠️")
+        # 从公会配置获取快照阈值与自定义提示文案
+        config = self.guild_repository.get_config(ticket.guild_id)
+        warning_threshold = config.snapshot_warning_threshold if config else SNAPSHOT_CREATE_WARNING_THRESHOLD
+        limit = config.snapshot_limit if config else SNAPSHOT_CREATE_LIMIT
+
+        if create_count >= warning_threshold and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_900"):
+            warning_text = (
+                config.snapshot_warning_text
+                if config and config.snapshot_warning_text
+                else f"⚠️ 本 Ticket 内消息数接近BOT记录上限（{limit}条），建议总结后重开 Ticket 继续讨论。 ⚠️"
+            )
+            await send(content=warning_text)
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_900")
 
-        if create_count >= self.create_limit and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_1000"):
-            await send(content="⚠️ 本 Ticket 消息数已达记录上限（1000条），新消息将不再被快照系统记录。 ⚠️")
+        if create_count >= limit and not self.cache.get_snapshot_threshold_flag(channel_id, "warn_1000"):
+            limit_text = (
+                config.snapshot_limit_text
+                if config and config.snapshot_limit_text
+                else f"⚠️ 本 Ticket 消息数已达记录上限（{limit}条），新消息将不再被快照系统记录。 ⚠️"
+            )
+            await send(content=limit_text)
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_1000")
             if self.logging_service is not None:
-                config = self.guild_repository.get_config(ticket.guild_id)
                 await self.logging_service.send_ticket_log(
                     ticket_id=ticket.ticket_id,
                     guild_id=ticket.guild_id,
                     level="warning",
                     title="工单快照创建上限已达",
-                    description=(f"Ticket `{ticket.ticket_id}` 已达到 {self.create_limit} 条 create 快照上限。"),
+                    description=(f"Ticket `{ticket.ticket_id}` 已达到 {limit} 条 create 快照上限。"),
                     channel_id=getattr(config, "log_channel_id", None),
                     extra={"channel_id": channel_id, "create_count": create_count},
                 )
 
-    def _restore_threshold_flags(self, channel_id: int, create_count: int) -> None:
-        if create_count >= self.create_warning_threshold:
+    def _restore_threshold_flags(
+        self,
+        channel_id: int,
+        create_count: int,
+        *,
+        warning_threshold: int = SNAPSHOT_CREATE_WARNING_THRESHOLD,
+        limit: int = SNAPSHOT_CREATE_LIMIT,
+    ) -> None:
+        if create_count >= warning_threshold:
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_900")
-        if create_count >= self.create_limit:
+        if create_count >= limit:
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_1000")
 
     @staticmethod

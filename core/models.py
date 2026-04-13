@@ -63,6 +63,23 @@ class GuildConfigRecord:
     max_open_tickets: int = 100
     timezone: str = "UTC"
     enable_download_window: bool = True
+    draft_inactive_close_hours: int = 6
+    draft_abandon_timeout_hours: int = 24
+    transfer_delay_seconds: int = 300
+    close_revoke_window_seconds: int = 120
+    close_request_timeout_seconds: int = 300
+    snapshot_warning_threshold: int = 900
+    snapshot_limit: int = 1000
+    panel_title: str | None = None
+    panel_description: str | None = None
+    panel_bullet_points: str | None = None
+    panel_footer_text: str | None = None
+    draft_welcome_text: str | None = None
+    snapshot_warning_text: str | None = None
+    snapshot_limit_text: str | None = None
+    close_request_text: str | None = None
+    closing_notice_text: str | None = None
+    close_revoke_text: str | None = None
     updated_at: str = ""
 
 

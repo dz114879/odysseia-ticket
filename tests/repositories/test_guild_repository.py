@@ -24,6 +24,23 @@ def make_config(
     max_open_tickets: int = 25,
     timezone: str = "Asia/Hong_Kong",
     enable_download_window: bool = True,
+    draft_inactive_close_hours: int = 6,
+    draft_abandon_timeout_hours: int = 24,
+    transfer_delay_seconds: int = 300,
+    close_revoke_window_seconds: int = 120,
+    close_request_timeout_seconds: int = 300,
+    snapshot_warning_threshold: int = 900,
+    snapshot_limit: int = 1000,
+    panel_title: str | None = None,
+    panel_description: str | None = None,
+    panel_bullet_points: str | None = None,
+    panel_footer_text: str | None = None,
+    draft_welcome_text: str | None = None,
+    snapshot_warning_text: str | None = None,
+    snapshot_limit_text: str | None = None,
+    close_request_text: str | None = None,
+    closing_notice_text: str | None = None,
+    close_revoke_text: str | None = None,
     updated_at: str = "2024-01-01T00:00:00+00:00",
 ) -> GuildConfigRecord:
     return GuildConfigRecord(
@@ -37,6 +54,23 @@ def make_config(
         max_open_tickets=max_open_tickets,
         timezone=timezone,
         enable_download_window=enable_download_window,
+        draft_inactive_close_hours=draft_inactive_close_hours,
+        draft_abandon_timeout_hours=draft_abandon_timeout_hours,
+        transfer_delay_seconds=transfer_delay_seconds,
+        close_revoke_window_seconds=close_revoke_window_seconds,
+        close_request_timeout_seconds=close_request_timeout_seconds,
+        snapshot_warning_threshold=snapshot_warning_threshold,
+        snapshot_limit=snapshot_limit,
+        panel_title=panel_title,
+        panel_description=panel_description,
+        panel_bullet_points=panel_bullet_points,
+        panel_footer_text=panel_footer_text,
+        draft_welcome_text=draft_welcome_text,
+        snapshot_warning_text=snapshot_warning_text,
+        snapshot_limit_text=snapshot_limit_text,
+        close_request_text=close_request_text,
+        closing_notice_text=closing_notice_text,
+        close_revoke_text=close_revoke_text,
         updated_at=updated_at,
     )
 
@@ -133,3 +167,97 @@ def test_replace_categories_replaces_previous_set(repository: GuildRepository) -
 
     assert [category.category_key for category in replaced] == ["appeal", "support"]
     assert repository.get_category(1, "legacy") is None
+
+
+def test_update_config_runtime_numeric_fields(repository: GuildRepository) -> None:
+    repository.upsert_config(make_config())
+
+    updated = repository.update_config(
+        1,
+        draft_inactive_close_hours=12,
+        transfer_delay_seconds=600,
+        snapshot_limit=2000,
+        updated_at="2024-03-01T00:00:00+00:00",
+    )
+
+    assert updated is not None
+    assert updated.draft_inactive_close_hours == 12
+    assert updated.transfer_delay_seconds == 600
+    assert updated.snapshot_limit == 2000
+    # Unchanged fields retain original values
+    assert updated.log_channel_id == 100
+    assert updated.panel_title is None
+    assert updated.draft_abandon_timeout_hours == 24
+    assert updated.close_revoke_window_seconds == 120
+    assert updated.close_request_timeout_seconds == 300
+    assert updated.snapshot_warning_threshold == 900
+
+
+def test_update_config_text_override_fields(repository: GuildRepository) -> None:
+    repository.upsert_config(make_config())
+
+    updated = repository.update_config(
+        1,
+        panel_title="Custom Title",
+        draft_welcome_text="Welcome!",
+        updated_at="2024-03-01T00:00:00+00:00",
+    )
+
+    assert updated is not None
+    assert updated.panel_title == "Custom Title"
+    assert updated.draft_welcome_text == "Welcome!"
+
+    # Clear panel_title by setting it to None, draft_welcome_text should remain
+    cleared = repository.update_config(
+        1,
+        panel_title=None,
+        updated_at="2024-04-01T00:00:00+00:00",
+    )
+
+    assert cleared is not None
+    assert cleared.panel_title is None
+    assert cleared.draft_welcome_text == "Welcome!"
+
+
+def test_upsert_config_roundtrips_all_new_fields(repository: GuildRepository) -> None:
+    config = make_config(
+        draft_inactive_close_hours=10,
+        draft_abandon_timeout_hours=48,
+        transfer_delay_seconds=600,
+        close_revoke_window_seconds=240,
+        close_request_timeout_seconds=600,
+        snapshot_warning_threshold=800,
+        snapshot_limit=1500,
+        panel_title="My Panel",
+        panel_description="Panel description text",
+        panel_bullet_points="bullet one\nbullet two",
+        panel_footer_text="Footer here",
+        draft_welcome_text="Welcome to your ticket",
+        snapshot_warning_text="Snapshot warning!",
+        snapshot_limit_text="Snapshot limit reached",
+        close_request_text="Close request sent",
+        closing_notice_text="Ticket is closing",
+        close_revoke_text="Close was revoked",
+    )
+
+    repository.upsert_config(config)
+    loaded = repository.get_config(1)
+
+    assert loaded is not None
+    assert loaded.draft_inactive_close_hours == 10
+    assert loaded.draft_abandon_timeout_hours == 48
+    assert loaded.transfer_delay_seconds == 600
+    assert loaded.close_revoke_window_seconds == 240
+    assert loaded.close_request_timeout_seconds == 600
+    assert loaded.snapshot_warning_threshold == 800
+    assert loaded.snapshot_limit == 1500
+    assert loaded.panel_title == "My Panel"
+    assert loaded.panel_description == "Panel description text"
+    assert loaded.panel_bullet_points == "bullet one\nbullet two"
+    assert loaded.panel_footer_text == "Footer here"
+    assert loaded.draft_welcome_text == "Welcome to your ticket"
+    assert loaded.snapshot_warning_text == "Snapshot warning!"
+    assert loaded.snapshot_limit_text == "Snapshot limit reached"
+    assert loaded.close_request_text == "Close request sent"
+    assert loaded.closing_notice_text == "Ticket is closing"
+    assert loaded.close_revoke_text == "Close was revoked"

@@ -130,11 +130,11 @@ class PanelService:
         created_by: int,
     ) -> PanelPublishResult:
         guild_id = channel.guild.id
-        _, categories = self.validation_service.assert_panel_creation_ready(guild_id)
+        config, categories = self.validation_service.assert_panel_creation_ready(guild_id)
         nonce = self.generate_panel_nonce()
 
         message = await channel.send(
-            embed=build_public_panel_embed(categories),
+            embed=build_public_panel_embed(categories, config=config),
             view=self.build_public_panel_view(guild_id=guild_id, nonce=nonce, categories=categories),
         )
         record = self.panel_repository.replace_active_panel(
@@ -154,12 +154,12 @@ class PanelService:
 
     async def refresh_active_panel(self, guild_id: int) -> PanelPublishResult:
         active_panel = self._require_active_panel(guild_id)
-        _, categories = self.validation_service.assert_panel_creation_ready(guild_id)
+        config, categories = self.validation_service.assert_panel_creation_ready(guild_id)
         message = await self._resolve_message(active_panel)
         refreshed_nonce = self.generate_panel_nonce()
 
         await message.edit(
-            embed=build_public_panel_embed(categories),
+            embed=build_public_panel_embed(categories, config=config),
             view=self.build_public_panel_view(
                 guild_id=guild_id,
                 nonce=refreshed_nonce,

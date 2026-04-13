@@ -65,6 +65,34 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert "archive_attempts" in ticket_column_names
     assert "queued_at" in ticket_column_names
 
+    # V13: runtime config columns in guild_configs
+    gc_columns = database_manager.fetchall("PRAGMA table_info(guild_configs);")
+    gc_column_names = {row["name"] for row in gc_columns}
+    v13_expected_columns = {
+        # Numeric
+        "draft_inactive_close_hours",
+        "draft_abandon_timeout_hours",
+        "transfer_delay_seconds",
+        "close_revoke_window_seconds",
+        "close_request_timeout_seconds",
+        "snapshot_warning_threshold",
+        "snapshot_limit",
+        # Text (nullable)
+        "panel_title",
+        "panel_description",
+        "panel_bullet_points",
+        "panel_footer_text",
+        "draft_welcome_text",
+        "snapshot_warning_text",
+        "snapshot_limit_text",
+        "close_request_text",
+        "closing_notice_text",
+        "close_revoke_text",
+    }
+    assert v13_expected_columns.issubset(gc_column_names), (
+        f"Missing guild_configs columns from V13 migration: {v13_expected_columns - gc_column_names}"
+    )
+
 
 def test_apply_migrations_is_idempotent(database_manager) -> None:
     first_report = apply_migrations(database_manager)

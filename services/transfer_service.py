@@ -81,7 +81,6 @@ class TransferService:
         logging_service: LoggingService | None = None,
         logger: logging.Logger | None = None,
         permission_service: StaffPermissionService | None = None,
-        transfer_delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS,
         capacity_service: CapacityService | None = None,
         queue_service: QueueService | None = None,
     ) -> None:
@@ -95,7 +94,6 @@ class TransferService:
         self.logging_service = logging_service
         self.logger = logger or logging.getLogger(__name__)
         self.permission_service = permission_service or StaffPermissionService()
-        self.transfer_delay_seconds = transfer_delay_seconds
         self.capacity_service = capacity_service or CapacityService(
             database,
             ticket_repository=self.ticket_repository,
@@ -170,7 +168,6 @@ class TransferService:
 
         normalized_target_category_key = self._normalize_target_category_key(target_category_key)
         normalized_reason = self._normalize_reason(reason)
-        scheduled_execute_at = self._build_transfer_execute_at(now)
 
         async with self._acquire_transfer_lock(channel_id):
             preparation = self.inspect_transfer_request(
@@ -182,6 +179,9 @@ class TransferService:
                 preparation.target_categories,
                 target_category_key=normalized_target_category_key,
             )
+            # 从公会配置中读取转交延迟秒数，若无配置则使用默认值
+            config_delay = preparation.context.config.transfer_delay_seconds if preparation.context.config else TRANSFER_EXECUTION_DELAY_SECONDS
+            scheduled_execute_at = self._build_transfer_execute_at(now, delay_seconds=config_delay)
             ticket = preparation.context.ticket
             updated_ticket = (
                 self.ticket_repository.update(
@@ -721,9 +721,9 @@ class TransferService:
             return []
         return [item for item in data if isinstance(item, dict)]
 
-    def _build_transfer_execute_at(self, now: datetime | str | None) -> str:
+    def _build_transfer_execute_at(self, now: datetime | str | None, *, delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS) -> str:
         reference_time = self._to_utc_datetime(now)
-        return (reference_time + timedelta(seconds=self.transfer_delay_seconds)).isoformat()
+        return (reference_time + timedelta(seconds=delay_seconds)).isoformat()
 
     @staticmethod
     def _is_due_for_execution(ticket: Any, reference_time: datetime) -> bool:

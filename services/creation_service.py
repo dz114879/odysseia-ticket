@@ -110,6 +110,7 @@ class CreationService:
                 welcome_content, welcome_embed = self._build_welcome_message(
                     creator_id=creator.id,
                     category=category,
+                    config=config,
                 )
                 welcome_message = await channel.send(
                     content=welcome_content,
@@ -274,9 +275,15 @@ class CreationService:
         *,
         creator_id: int,
         category: TicketCategoryConfig,
+        config: GuildConfigRecord | None = None,
     ) -> tuple[str, discord.Embed]:
         content = f"<@{creator_id}>"
-        embed = build_draft_welcome_embed(category_name=category.display_name)
+        kwargs: dict[str, object] = {"category_name": category.display_name}
+        if config is not None:
+            kwargs["inactive_close_hours"] = config.draft_inactive_close_hours
+            kwargs["abandon_timeout_hours"] = config.draft_abandon_timeout_hours
+            kwargs["custom_welcome_text"] = config.draft_welcome_text
+        embed = build_draft_welcome_embed(**kwargs)
         return content, embed
 
     @staticmethod

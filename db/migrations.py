@@ -268,6 +268,31 @@ def _migration_v12_add_multi_staff_roles(connection: sqlite3.Connection) -> None
     _execute_statements(connection, _MIGRATION_V12_STATEMENTS)
 
 
+_MIGRATION_V13_STATEMENTS = (
+    "ALTER TABLE guild_configs ADD COLUMN draft_inactive_close_hours INTEGER NOT NULL DEFAULT 6;",
+    "ALTER TABLE guild_configs ADD COLUMN draft_abandon_timeout_hours INTEGER NOT NULL DEFAULT 24;",
+    "ALTER TABLE guild_configs ADD COLUMN transfer_delay_seconds INTEGER NOT NULL DEFAULT 300;",
+    "ALTER TABLE guild_configs ADD COLUMN close_revoke_window_seconds INTEGER NOT NULL DEFAULT 120;",
+    "ALTER TABLE guild_configs ADD COLUMN close_request_timeout_seconds INTEGER NOT NULL DEFAULT 300;",
+    "ALTER TABLE guild_configs ADD COLUMN snapshot_warning_threshold INTEGER NOT NULL DEFAULT 900;",
+    "ALTER TABLE guild_configs ADD COLUMN snapshot_limit INTEGER NOT NULL DEFAULT 1000;",
+    "ALTER TABLE guild_configs ADD COLUMN panel_title TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN panel_description TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN panel_bullet_points TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN panel_footer_text TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN draft_welcome_text TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN snapshot_warning_text TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN snapshot_limit_text TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN close_request_text TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN closing_notice_text TEXT;",
+    "ALTER TABLE guild_configs ADD COLUMN close_revoke_text TEXT;",
+)
+
+
+def _migration_v13_add_runtime_config_columns(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V13_STATEMENTS)
+
+
 def _migration_v11_change_default_priority_to_unset(connection: sqlite3.Connection) -> None:
     # SQLite 不支持 ALTER COLUMN DEFAULT，但新行将由应用层 dataclass 默认值 'unset' 控制。
     # 已有 ticket 保持原 priority 不变，无需迁移数据。
@@ -340,6 +365,11 @@ MIGRATIONS = [
         version=12,
         name="add_multi_staff_roles",
         operation=_migration_v12_add_multi_staff_roles,
+    ),
+    Migration(
+        version=13,
+        name="add_runtime_config_columns",
+        operation=_migration_v13_add_runtime_config_columns,
     ),
 ]
 

@@ -28,6 +28,23 @@ class GuildRepository(BaseRepository):
             max_open_tickets=row["max_open_tickets"],
             timezone=row["timezone"],
             enable_download_window=from_db_bool(row["enable_download_window"]),
+            draft_inactive_close_hours=row["draft_inactive_close_hours"],
+            draft_abandon_timeout_hours=row["draft_abandon_timeout_hours"],
+            transfer_delay_seconds=row["transfer_delay_seconds"],
+            close_revoke_window_seconds=row["close_revoke_window_seconds"],
+            close_request_timeout_seconds=row["close_request_timeout_seconds"],
+            snapshot_warning_threshold=row["snapshot_warning_threshold"],
+            snapshot_limit=row["snapshot_limit"],
+            panel_title=row["panel_title"],
+            panel_description=row["panel_description"],
+            panel_bullet_points=row["panel_bullet_points"],
+            panel_footer_text=row["panel_footer_text"],
+            draft_welcome_text=row["draft_welcome_text"],
+            snapshot_warning_text=row["snapshot_warning_text"],
+            snapshot_limit_text=row["snapshot_limit_text"],
+            close_request_text=row["close_request_text"],
+            closing_notice_text=row["closing_notice_text"],
+            close_revoke_text=row["close_revoke_text"],
             updated_at=row["updated_at"],
         )
 
@@ -81,9 +98,26 @@ class GuildRepository(BaseRepository):
                     max_open_tickets,
                     timezone,
                     enable_download_window,
+                    draft_inactive_close_hours,
+                    draft_abandon_timeout_hours,
+                    transfer_delay_seconds,
+                    close_revoke_window_seconds,
+                    close_request_timeout_seconds,
+                    snapshot_warning_threshold,
+                    snapshot_limit,
+                    panel_title,
+                    panel_description,
+                    panel_bullet_points,
+                    panel_footer_text,
+                    draft_welcome_text,
+                    snapshot_warning_text,
+                    snapshot_limit_text,
+                    close_request_text,
+                    closing_notice_text,
+                    close_revoke_text,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(guild_id) DO UPDATE SET
                     is_initialized = excluded.is_initialized,
                     log_channel_id = excluded.log_channel_id,
@@ -94,6 +128,23 @@ class GuildRepository(BaseRepository):
                     max_open_tickets = excluded.max_open_tickets,
                     timezone = excluded.timezone,
                     enable_download_window = excluded.enable_download_window,
+                    draft_inactive_close_hours = excluded.draft_inactive_close_hours,
+                    draft_abandon_timeout_hours = excluded.draft_abandon_timeout_hours,
+                    transfer_delay_seconds = excluded.transfer_delay_seconds,
+                    close_revoke_window_seconds = excluded.close_revoke_window_seconds,
+                    close_request_timeout_seconds = excluded.close_request_timeout_seconds,
+                    snapshot_warning_threshold = excluded.snapshot_warning_threshold,
+                    snapshot_limit = excluded.snapshot_limit,
+                    panel_title = excluded.panel_title,
+                    panel_description = excluded.panel_description,
+                    panel_bullet_points = excluded.panel_bullet_points,
+                    panel_footer_text = excluded.panel_footer_text,
+                    draft_welcome_text = excluded.draft_welcome_text,
+                    snapshot_warning_text = excluded.snapshot_warning_text,
+                    snapshot_limit_text = excluded.snapshot_limit_text,
+                    close_request_text = excluded.close_request_text,
+                    closing_notice_text = excluded.closing_notice_text,
+                    close_revoke_text = excluded.close_revoke_text,
                     updated_at = excluded.updated_at;
                 """,
                 (
@@ -107,6 +158,23 @@ class GuildRepository(BaseRepository):
                     record.max_open_tickets,
                     record.timezone,
                     to_db_bool(record.enable_download_window),
+                    record.draft_inactive_close_hours,
+                    record.draft_abandon_timeout_hours,
+                    record.transfer_delay_seconds,
+                    record.close_revoke_window_seconds,
+                    record.close_request_timeout_seconds,
+                    record.snapshot_warning_threshold,
+                    record.snapshot_limit,
+                    record.panel_title,
+                    record.panel_description,
+                    record.panel_bullet_points,
+                    record.panel_footer_text,
+                    record.draft_welcome_text,
+                    record.snapshot_warning_text,
+                    record.snapshot_limit_text,
+                    record.close_request_text,
+                    record.closing_notice_text,
+                    record.close_revoke_text,
                     updated_at,
                 ),
             )
@@ -137,6 +205,23 @@ class GuildRepository(BaseRepository):
         max_open_tickets: int | object = UNSET,
         timezone: str | object = UNSET,
         enable_download_window: bool | object = UNSET,
+        draft_inactive_close_hours: int | object = UNSET,
+        draft_abandon_timeout_hours: int | object = UNSET,
+        transfer_delay_seconds: int | object = UNSET,
+        close_revoke_window_seconds: int | object = UNSET,
+        close_request_timeout_seconds: int | object = UNSET,
+        snapshot_warning_threshold: int | object = UNSET,
+        snapshot_limit: int | object = UNSET,
+        panel_title: str | None | object = UNSET,
+        panel_description: str | None | object = UNSET,
+        panel_bullet_points: str | None | object = UNSET,
+        panel_footer_text: str | None | object = UNSET,
+        draft_welcome_text: str | None | object = UNSET,
+        snapshot_warning_text: str | None | object = UNSET,
+        snapshot_limit_text: str | None | object = UNSET,
+        close_request_text: str | None | object = UNSET,
+        closing_notice_text: str | None | object = UNSET,
+        close_revoke_text: str | None | object = UNSET,
         updated_at: str | object = UNSET,
         connection: sqlite3.Connection | None = None,
     ) -> GuildConfigRecord | None:
@@ -160,6 +245,40 @@ class GuildRepository(BaseRepository):
             updates["timezone"] = timezone
         if enable_download_window is not UNSET:
             updates["enable_download_window"] = to_db_bool(bool(enable_download_window))
+        if draft_inactive_close_hours is not UNSET:
+            updates["draft_inactive_close_hours"] = draft_inactive_close_hours
+        if draft_abandon_timeout_hours is not UNSET:
+            updates["draft_abandon_timeout_hours"] = draft_abandon_timeout_hours
+        if transfer_delay_seconds is not UNSET:
+            updates["transfer_delay_seconds"] = transfer_delay_seconds
+        if close_revoke_window_seconds is not UNSET:
+            updates["close_revoke_window_seconds"] = close_revoke_window_seconds
+        if close_request_timeout_seconds is not UNSET:
+            updates["close_request_timeout_seconds"] = close_request_timeout_seconds
+        if snapshot_warning_threshold is not UNSET:
+            updates["snapshot_warning_threshold"] = snapshot_warning_threshold
+        if snapshot_limit is not UNSET:
+            updates["snapshot_limit"] = snapshot_limit
+        if panel_title is not UNSET:
+            updates["panel_title"] = panel_title
+        if panel_description is not UNSET:
+            updates["panel_description"] = panel_description
+        if panel_bullet_points is not UNSET:
+            updates["panel_bullet_points"] = panel_bullet_points
+        if panel_footer_text is not UNSET:
+            updates["panel_footer_text"] = panel_footer_text
+        if draft_welcome_text is not UNSET:
+            updates["draft_welcome_text"] = draft_welcome_text
+        if snapshot_warning_text is not UNSET:
+            updates["snapshot_warning_text"] = snapshot_warning_text
+        if snapshot_limit_text is not UNSET:
+            updates["snapshot_limit_text"] = snapshot_limit_text
+        if close_request_text is not UNSET:
+            updates["close_request_text"] = close_request_text
+        if closing_notice_text is not UNSET:
+            updates["closing_notice_text"] = closing_notice_text
+        if close_revoke_text is not UNSET:
+            updates["close_revoke_text"] = close_revoke_text
 
         if updated_at is not UNSET:
             updates["updated_at"] = updated_at

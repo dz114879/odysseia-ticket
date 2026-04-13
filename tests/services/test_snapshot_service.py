@@ -381,14 +381,14 @@ async def test_snapshot_service_emits_threshold_warnings_and_stops_create_after_
     channel = prepared_snapshot_context["channel"]
     creator = prepared_snapshot_context["creator"]
     logging_service = FakeLoggingService()
+    # 通过公会配置设置低阈值以便测试
+    GuildRepository(database).update_config(ticket.guild_id, snapshot_warning_threshold=2, snapshot_limit=3)
     service = SnapshotService(
         database,
         snapshot_store=SnapshotStore(file_store=TicketFileStore(tmp_path)),
         cache=RuntimeCacheStore(),
         lock_manager=LockManager(),
         logging_service=logging_service,
-        create_warning_threshold=2,
-        create_limit=3,
     )
     TicketRepository(database).update(ticket.ticket_id, snapshot_bootstrapped_at="2024-01-01T00:00:00+00:00")
 

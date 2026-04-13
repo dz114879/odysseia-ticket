@@ -14,20 +14,24 @@ from core.enums import ClaimMode, TicketPriority, TicketStatus
 from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 
 
-def build_public_panel_embed(categories: list[TicketCategoryConfig]) -> discord.Embed:
+def build_public_panel_embed(categories: list[TicketCategoryConfig], *, config: GuildConfigRecord | None = None) -> discord.Embed:
+    title = (config.panel_title if config and config.panel_title else DEFAULT_PANEL_TITLE)
+    description = (config.panel_description if config and config.panel_description else DEFAULT_PANEL_DESCRIPTION)
+    bullet_points = (config.panel_bullet_points if config and config.panel_bullet_points else DEFAULT_PANEL_BULLET_POINTS)
+    footer = (config.panel_footer_text if config and config.panel_footer_text else DEFAULT_PANEL_FOOTER_TEXT)
     embed = discord.Embed(
-        title=DEFAULT_PANEL_TITLE,
-        description=DEFAULT_PANEL_DESCRIPTION,
+        title=title,
+        description=description,
         color=discord.Color.blurple(),
     )
-    embed.add_field(name="支持事项", value=DEFAULT_PANEL_BULLET_POINTS, inline=False)
+    embed.add_field(name="支持事项", value=bullet_points, inline=False)
     embed.add_field(
         name="可选分类",
         value=_format_category_lines(categories),
         inline=False,
     )
     embed.add_field(name="容量状态", value=DEFAULT_PANEL_CAPACITY_TEXT, inline=False)
-    embed.set_footer(text=DEFAULT_PANEL_FOOTER_TEXT)
+    embed.set_footer(text=footer)
     return embed
 
 
@@ -135,11 +139,11 @@ def _build_transfer_summary(ticket: TicketRecord) -> str | None:
     return "\n".join(lines)
 
 
-def _format_transfer_delay_text() -> str:
-    if TRANSFER_EXECUTION_DELAY_SECONDS % 60 == 0:
-        minutes = TRANSFER_EXECUTION_DELAY_SECONDS // 60
+def _format_transfer_delay_text(delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS) -> str:
+    if delay_seconds % 60 == 0:
+        minutes = delay_seconds // 60
         return "1 分钟" if minutes == 1 else f"{minutes} 分钟"
-    return f"{TRANSFER_EXECUTION_DELAY_SECONDS} 秒"
+    return f"{delay_seconds} 秒"
 
 
 def _format_category_lines(categories: list[TicketCategoryConfig]) -> str:

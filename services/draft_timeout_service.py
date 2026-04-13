@@ -9,14 +9,13 @@ from collections.abc import AsyncIterator
 
 from core.constants import (
     DRAFT_ABANDON_TIMEOUT_HOURS,
-    DRAFT_ABANDON_WARNING_HOURS,
     DRAFT_INACTIVE_CLOSE_HOURS,
-    DRAFT_INACTIVE_WARNING_HOURS,
 )
 from core.enums import TicketStatus
-from core.models import TicketRecord
+from core.models import GuildConfigRecord, TicketRecord
 from db.connection import DatabaseManager
 from db.repositories.base import utc_now_iso
+from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 
@@ -35,15 +34,18 @@ class DraftTimeoutService:
         *,
         bot: Any | None = None,
         ticket_repository: TicketRepository | None = None,
+        guild_repository: GuildRepository | None = None,
         lock_manager: LockManager | None = None,
         logger: logging.Logger | None = None,
     ) -> None:
         self.database = database
         self.bot = bot
         self.ticket_repository = ticket_repository or TicketRepository(database)
+        self.guild_repository = guild_repository or GuildRepository(database)
         self.lock_manager = lock_manager
         self.logger = logger or logging.getLogger(__name__)
         self._warned_ticket_ids: set[str] = set()
+        self._guild_config_cache: dict[int, GuildConfigRecord | None] = {}
 
     async def handle_message(self, message: Any) -> TicketRecord | None:
         author = getattr(message, "author", None)
@@ -86,6 +88,7 @@ class DraftTimeoutService:
     ) -> list[DraftTimeoutOutcome]:
         reference_time = self._to_utc_datetime(now)
         outcomes: list[DraftTimeoutOutcome] = []
+        self._guild_config_cache.clear()
 
         for ticket in self.ticket_repository.list_by_statuses([TicketStatus.DRAFT]):
             try:
@@ -109,11 +112,13 @@ class DraftTimeoutService:
         reference_time = self._to_utc_datetime(now)
         warned: list[str] = []
 
+        self._guild_config_cache.clear()
         for ticket in self.ticket_repository.list_by_statuses([TicketStatus.DRAFT]):
             if ticket.ticket_id in self._warned_ticket_ids:
                 continue
             try:
-                warning_msg = self._get_warning_message(ticket, reference_time)
+                config = self._load_guild_config(ticket.guild_id)
+                warning_msg = self._get_warning_message(ticket, reference_time, config=config)
                 if warning_msg is None:
                     continue
                 channel = await self._resolve_channel(ticket.channel_id)
@@ -130,11 +135,21 @@ class DraftTimeoutService:
         return warned
 
     @staticmethod
-    def _get_warning_message(ticket: TicketRecord, reference_time: datetime) -> str | None:
+    def _get_warning_message(
+        ticket: TicketRecord,
+        reference_time: datetime,
+        *,
+        config: GuildConfigRecord | None = None,
+    ) -> str | None:
+        abandon_hours = config.draft_abandon_timeout_hours if config else DRAFT_ABANDON_TIMEOUT_HOURS
+        abandon_warning_hours = abandon_hours - 1
+        inactive_hours = config.draft_inactive_close_hours if config else DRAFT_INACTIVE_CLOSE_HOURS
+        inactive_warning_hours = inactive_hours - 1
+
         created_at = DraftTimeoutService._parse_iso_datetime(ticket.created_at)
         if not ticket.has_user_message:
             elapsed = reference_time - created_at
-            if timedelta(hours=DRAFT_ABANDON_WARNING_HOURS) <= elapsed < timedelta(hours=DRAFT_ABANDON_TIMEOUT_HOURS):
+            if timedelta(hours=abandon_warning_hours) <= elapsed < timedelta(hours=abandon_hours):
                 return (
                     f"<@{ticket.creator_id}> 由于处于草稿期过久，您的 Ticket 将在 1 小时后被自动废弃。\n\n"
                     "如果您已经完成草稿，但忘记提交，请使用标注消息下的按钮，尽快提交 Ticket; "
@@ -144,7 +159,7 @@ class DraftTimeoutService:
 
         last_msg_at = DraftTimeoutService._parse_iso_datetime(ticket.last_user_message_at or ticket.created_at)
         elapsed = reference_time - last_msg_at
-        if timedelta(hours=DRAFT_INACTIVE_WARNING_HOURS) <= elapsed < timedelta(hours=DRAFT_INACTIVE_CLOSE_HOURS):
+        if timedelta(hours=inactive_warning_hours) <= elapsed < timedelta(hours=inactive_hours):
             return f"<@{ticket.creator_id}> 由于您未发言，本 Ticket 将在 1 小时后被自动废弃。"
         return None
 
@@ -159,7 +174,8 @@ class DraftTimeoutService:
             if ticket is None or ticket.status != TicketStatus.DRAFT:
                 return None
 
-            reason = self._get_timeout_reason(ticket, reference_time)
+            config = self._load_guild_config(ticket.guild_id)
+            reason = self._get_timeout_reason(ticket, reference_time, config=config)
             if reason is None:
                 return None
 
@@ -195,17 +211,32 @@ class DraftTimeoutService:
             )
 
     @staticmethod
-    def _get_timeout_reason(ticket: TicketRecord, reference_time: datetime) -> str | None:
+    def _get_timeout_reason(
+        ticket: TicketRecord,
+        reference_time: datetime,
+        *,
+        config: GuildConfigRecord | None = None,
+    ) -> str | None:
+        abandon_hours = config.draft_abandon_timeout_hours if config else DRAFT_ABANDON_TIMEOUT_HOURS
+        inactive_hours = config.draft_inactive_close_hours if config else DRAFT_INACTIVE_CLOSE_HOURS
+
         created_at = DraftTimeoutService._parse_iso_datetime(ticket.created_at)
         if not ticket.has_user_message:
-            if reference_time - created_at >= timedelta(hours=DRAFT_ABANDON_TIMEOUT_HOURS):
+            if reference_time - created_at >= timedelta(hours=abandon_hours):
                 return "draft_expired"
             return None
 
         last_user_message_at = DraftTimeoutService._parse_iso_datetime(ticket.last_user_message_at or ticket.created_at)
-        if reference_time - last_user_message_at >= timedelta(hours=DRAFT_INACTIVE_CLOSE_HOURS):
+        if reference_time - last_user_message_at >= timedelta(hours=inactive_hours):
             return "inactive_close"
         return None
+
+    def _load_guild_config(self, guild_id: int) -> GuildConfigRecord | None:
+        if guild_id in self._guild_config_cache:
+            return self._guild_config_cache[guild_id]
+        config = self.guild_repository.get_config(guild_id)
+        self._guild_config_cache[guild_id] = config
+        return config
 
     async def _resolve_channel(self, channel_id: int | None) -> Any | None:
         if self.bot is None or channel_id is None:
