@@ -134,7 +134,7 @@ def prepared_evidence_cog_context(migrated_database, tmp_path):
             guild_id=1,
             category_key="support",
             display_name="技术支持",
-            staff_role_id=500,
+            staff_role_ids_json='[500]',
             staff_user_ids_json="[]",
         )
     )

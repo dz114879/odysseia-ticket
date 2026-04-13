@@ -120,7 +120,7 @@ def prepared_snapshot_context(migrated_database):
             guild_id=1,
             category_key="support",
             display_name="技术支持",
-            staff_role_id=500,
+            staff_role_ids_json='[500]',
         )
     )
     ticket = ticket_repository.create(

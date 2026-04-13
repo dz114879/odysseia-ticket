@@ -1,6 +1,3 @@
-[tool.ruff]
-# 将行宽设置为 120
-line-length = 150
 [tool.ruff.lint]
 # 除了默认的 E, F，额外添加：
 # B: Bugbear (代码缺陷)

@@ -1,43 +1,3 @@
-  问题 — Transfer 选择菜单
-
-  问题： /ticket transfer 需要手动输入 target_category_key 字符串，用户必须记住精确的分类 key 才能操作。
-
-  涉及文件：
-  - cogs/staff_cog.py — transfer_command 定义处（参数 target_category_key: str）
-  - services/transfer_service.py — inspect_transfer_request() 加载可选分类列表
-  - 可能新增 discord_ui/transfer_views.py — Select Menu 组件
-
-  目标： 把手填 key 改成 Discord Select Menu 下拉菜单，列出当前 ticket 可转交到的其他已启用分类（display_name +
-  emoji）。
-
-  大致改法：
-  - 给 target_category_key 参数加 @transfer_command.autocomplete，从 DB 动态查出可选分类返回
-  app_commands.Choice。改动最小，不需要新 View。
-  - 不涉及数据层变更，只改 cog。
-
-  ---
-  问题 — HTML 归档修复
-
-  问题： 两个子问题——(1) BOT 的 embed 消息在 HTML 归档中显示为空消息（只有作者名，内容空白），因为
-  archive_render_service.py 只取 message.content 不取 message.embeds；(2) 已删除消息全部堆在 HTML
-  底部的独立区块，不够直观。
-
-  涉及文件：
-  - services/archive_render_service.py — HTML 渲染核心（_collect_messages()、_build_html()）
-  - services/snapshot_service.py — 快照采集（当前 _should_ignore_message 跳过所有 bot 消息）
-  - services/snapshot_query_service.py — 从快照构建删除消息注解
-
-  目标：
-  1. Embed 消息：在 HTML 中以可读方式展示 embed 内容（title + description + fields），不再显示为空。
-  2. 已删除消息：插入到原始时间线位置（前后两条消息之间），用视觉样式（如红色边框 + 删除线）标记，而非全部放底部。
-
-  大致改法：
-  1. _collect_messages() 中增加对 message.embeds 的处理——遍历每个 embed，提取 title/description/fields 拼成文本，附加到
-  content 后面（或用 [EMBED] 格式化块）。
-  2. _build_html() 中改变已删除消息的渲染逻辑——根据 message_id 和时间戳，把删除消息插回到时间线的正确位置，用 CSS class
-  deleted 标记而非放到单独 section。
-  3. 可能还需要调整 snapshot_service.py，让 bot 消息也被记录（至少记录 embed 信息），以便 fallback 模式也能正确渲染。
-
   ---
   问题 — 多 Staff 角色
 
@@ -60,10 +20,10 @@
   大致改法：
   1. 新增 DB 迁移（V12）：ALTER TABLE ticket_categories ADD COLUMN staff_role_ids_json TEXT NOT NULL DEFAULT
   '[]'，用一段数据迁移把旧 staff_role_id 的值写入新列。
-  2. TicketCategoryConfig 字段从 staff_role_id: int | None 改为 staff_role_ids_json: str = "[]"。
-  3. 所有 guild.get_role(category.staff_role_id) 单值调用 → 遍历 JSON 解析出的列表，逐个 get_role()。
-  4. is_staff_actor() 中从 staff_role_id in actor_role_ids 改为 any(rid in actor_role_ids for rid in parsed_list)。
-  5. 全量更新测试中的 staff_role_id=... 为 staff_role_ids_json="[...]"。
+  1. TicketCategoryConfig 字段从 staff_role_id: int | None 改为 staff_role_ids_json: str = "[]"。
+  2. 所有 guild.get_role(category.staff_role_id) 单值调用 → 遍历 JSON 解析出的列表，逐个 get_role()。
+  3. is_staff_actor() 中从 staff_role_id in actor_role_ids 改为 any(rid in actor_role_ids for rid in parsed_list)。
+  4. 全量更新测试中的 staff_role_id=... 为 staff_role_ids_json="[...]"。
 
   ---
   问题 — 运行时控制面板

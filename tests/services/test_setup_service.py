@@ -94,7 +94,7 @@ def test_setup_guild_keeps_existing_categories(
             display_name="自定义分类",
             emoji="✨",
             description="custom category",
-            staff_role_id=999,
+            staff_role_ids_json="[999]",
             staff_user_ids_json="[]",
             is_enabled=True,
             allowlist_role_ids_json="[]",

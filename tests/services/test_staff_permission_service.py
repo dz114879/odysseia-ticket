@@ -60,7 +60,7 @@ async def test_apply_staff_overwrite_plan_in_strict_mode_only_allows_current_cla
         guild_id=1,
         category_key="support",
         display_name="技术支持",
-        staff_role_id=500,
+        staff_role_ids_json='[500]',
         staff_user_ids_json="[302]",
     )
     service = StaffPermissionService()
@@ -96,14 +96,14 @@ async def test_apply_staff_overwrite_plan_hides_previous_category_targets_during
         guild_id=1,
         category_key="support",
         display_name="技术支持",
-        staff_role_id=500,
+        staff_role_ids_json='[500]',
         staff_user_ids_json="[302]",
     )
     billing_category = TicketCategoryConfig(
         guild_id=1,
         category_key="billing",
         display_name="账单咨询",
-        staff_role_id=600,
+        staff_role_ids_json='[600]',
         staff_user_ids_json="[]",
     )
     service = StaffPermissionService()
@@ -143,7 +143,7 @@ async def test_apply_ticket_permissions_includes_creator_and_preserves_muted_par
         guild_id=1,
         category_key="support",
         display_name="技术支持",
-        staff_role_id=500,
+        staff_role_ids_json='[500]',
         staff_user_ids_json="[]",
     )
     service = StaffPermissionService()

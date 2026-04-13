@@ -153,7 +153,7 @@ def prepared_moderation_context(migrated_database):
             display_name="技术支持",
             emoji="🛠️",
             description="处理技术问题",
-            staff_role_id=500,
+            staff_role_ids_json="[500]",
             staff_user_ids_json="[302]",
             is_enabled=True,
             allowlist_role_ids_json="[]",

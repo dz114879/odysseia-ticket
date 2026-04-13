@@ -90,7 +90,8 @@ class StaffGuardService:
             return True
 
         actor_role_ids = self._extract_role_ids(getattr(actor, "roles", []))
-        return category.staff_role_id is not None and category.staff_role_id in actor_role_ids
+        staff_role_ids = set(self._parse_staff_user_ids(category.staff_role_ids_json))
+        return bool(actor_role_ids & staff_role_ids)
 
     @staticmethod
     def is_ticket_admin(

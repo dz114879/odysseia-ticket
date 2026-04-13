@@ -366,8 +366,8 @@ class StaffPermissionService:
             if admin_role is not None:
                 targets.append(admin_role)
 
-        if category.staff_role_id is not None:
-            staff_role = getattr(guild, "get_role", lambda _role_id: None)(category.staff_role_id)
+        for staff_role_id in self._parse_staff_user_ids(category.staff_role_ids_json):
+            staff_role = getattr(guild, "get_role", lambda _role_id: None)(staff_role_id)
             if staff_role is not None:
                 targets.append(staff_role)
 

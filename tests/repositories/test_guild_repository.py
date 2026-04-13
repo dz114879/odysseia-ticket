@@ -55,7 +55,7 @@ def make_category(
         display_name=display_name or category_key.title(),
         emoji="🎫",
         description=f"{category_key} description",
-        staff_role_id=500,
+        staff_role_ids_json='[500]',
         staff_user_ids_json="[1, 2]",
         is_enabled=is_enabled,
         allowlist_role_ids_json="[10]",

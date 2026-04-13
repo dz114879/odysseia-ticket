@@ -245,9 +245,10 @@ class CreationService:
         if admin_role is not None:
             overwrites[admin_role] = discord.PermissionOverwrite(view_channel=False)
 
-        staff_role = guild.get_role(category.staff_role_id) if category.staff_role_id is not None else None
-        if staff_role is not None:
-            overwrites[staff_role] = discord.PermissionOverwrite(view_channel=False)
+        for staff_role_id in self._parse_staff_user_ids(category.staff_role_ids_json):
+            staff_role = guild.get_role(staff_role_id)
+            if staff_role is not None:
+                overwrites[staff_role] = discord.PermissionOverwrite(view_channel=False)
 
         get_member = getattr(guild, "get_member", None)
         if callable(get_member):

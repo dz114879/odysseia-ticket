@@ -91,7 +91,7 @@ class GuildConfigService:
                 display_name=template.display_name,
                 emoji=template.emoji,
                 description=template.description,
-                staff_role_id=None,
+                staff_role_ids_json="[]",
                 staff_user_ids_json="[]",
                 is_enabled=template.is_enabled,
                 allowlist_role_ids_json="[]",

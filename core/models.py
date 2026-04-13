@@ -73,7 +73,7 @@ class TicketCategoryConfig:
     display_name: str
     emoji: str | None = None
     description: str | None = None
-    staff_role_id: int | None = None
+    staff_role_ids_json: str = "[]"
     staff_user_ids_json: str = "[]"
     is_enabled: bool = True
     allowlist_role_ids_json: str = "[]"

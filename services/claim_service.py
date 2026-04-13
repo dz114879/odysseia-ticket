@@ -323,7 +323,8 @@ class ClaimService:
         if actor_id in set(self.guard_service._parse_staff_user_ids(category.staff_user_ids_json)):
             return True
         role_ids = self.guard_service._extract_role_ids(getattr(actor, "roles", []))
-        return category.staff_role_id is not None and category.staff_role_id in role_ids
+        staff_role_ids = set(self.guard_service._parse_staff_user_ids(category.staff_role_ids_json))
+        return bool(role_ids & staff_role_ids)
 
     def _is_ticket_admin(
         self,

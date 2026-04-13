@@ -254,6 +254,20 @@ def _migration_v10_add_archive_failure_tracking(connection: sqlite3.Connection) 
     _execute_statements(connection, _MIGRATION_V10_STATEMENTS)
 
 
+_MIGRATION_V12_STATEMENTS = (
+    "ALTER TABLE ticket_categories ADD COLUMN staff_role_ids_json TEXT NOT NULL DEFAULT '[]';",
+    """
+    UPDATE ticket_categories
+    SET staff_role_ids_json = json_array(staff_role_id)
+    WHERE staff_role_id IS NOT NULL;
+    """,
+)
+
+
+def _migration_v12_add_multi_staff_roles(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V12_STATEMENTS)
+
+
 def _migration_v11_change_default_priority_to_unset(connection: sqlite3.Connection) -> None:
     # SQLite 不支持 ALTER COLUMN DEFAULT，但新行将由应用层 dataclass 默认值 'unset' 控制。
     # 已有 ticket 保持原 priority 不变，无需迁移数据。
@@ -321,6 +335,11 @@ MIGRATIONS = [
         version=11,
         name="change_default_priority_to_unset",
         operation=_migration_v11_change_default_priority_to_unset,
+    ),
+    Migration(
+        version=12,
+        name="add_multi_staff_roles",
+        operation=_migration_v12_add_multi_staff_roles,
     ),
 ]
 
