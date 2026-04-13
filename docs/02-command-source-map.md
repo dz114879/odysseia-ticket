@@ -78,6 +78,19 @@ All slash commands are mounted under `/ticket`, with subgroups defined in `cogs/
 | `/ticket untransfer` | 185 | Cancel a cross-category transfer | `TransferService.cancel_transfer()` |
 | `/ticket help` | 190 | Show the workflow help text | No service call; directly calls `build_ticket_help_message()` |
 
+### PermissionCog — `cogs/permission_cog.py`
+
+| Command | Line | Description | Call Chain |
+|---------|------|-------------|------------|
+| `/ticket permission` | 34 | Upload a JSON file to configure per-category staff permissions | `PermissionConfigService.validate_permission_json()` &#8594; `PermissionConfigService.apply_permission_config()` &#8594; `PanelService.refresh_active_panel()` |
+| `/ticket permission-help` | 44 | Get the permission config help doc and JSON format reference | `PermissionConfigService.build_permission_help_text()` |
+
+### ConfigCog — `cogs/config_cog.py`
+
+| Command | Line | Description | Call Chain |
+|---------|------|-------------|------------|
+| `/ticket config` | 27 | Open the runtime configuration panel (ephemeral) | Builds `ConfigPanelView` with category select &#8594; Modals for each setting group |
+
 ---
 
 ## 3. UI Interaction Entry Points
@@ -125,6 +138,25 @@ All panel button actions are checked for message staleness through `StaffPanelSe
 | `on_timeout` | 37 | Close request times out | `CloseRequestService.expire_request_message()` |
 
 Non-persistent view: `CloseRequestView` (line 17, has a timeout), created each time a close request is initiated.
+
+### Runtime Config — `discord_ui/config_views.py`
+
+| Component | Line | Trigger | Call Chain |
+|-----------|------|---------|------------|
+| `ConfigCategorySelect` | 80 | Admin selects a setting category | Opens the corresponding Modal (basic / draft / close / snapshot) or shows `TextGroupView` for text settings |
+| `ConfigPanelView` | 118 | Container for `ConfigCategorySelect` | Ephemeral, timeout=300 |
+| `TextGroupSelect` | 127 | Admin selects a text group | Opens the corresponding text Modal (panel / draft welcome / snapshot / close) |
+| `TextGroupView` | 153 | Container for `TextGroupSelect` | Ephemeral, timeout=300 |
+| `BasicSettingsModal` | 162 | Admin edits timezone, max tickets, claim mode, download window | `validate_basic_settings()` &#8594; `GuildRepository.update_config()` |
+| `DraftTimeoutModal` | 201 | Admin edits inactive close / abandon timeout hours | `validate_draft_timeouts()` &#8594; `GuildRepository.update_config()` |
+| `CloseTransferModal` | 234 | Admin edits transfer delay, close revoke window, close request timeout | `validate_close_transfer()` &#8594; `GuildRepository.update_config()` |
+| `SnapshotLimitsModal` | 270 | Admin edits snapshot warning threshold / limit | `validate_snapshot_limits()` &#8594; `GuildRepository.update_config()` |
+| `PanelTextModal` | 306 | Admin edits panel title, description, bullet points, footer | `validate_text_fields()` &#8594; `GuildRepository.update_config()` &#8594; `PanelService.refresh_active_panel()` |
+| `DraftWelcomeTextModal` | 342 | Admin edits draft welcome text | `validate_text_fields()` &#8594; `GuildRepository.update_config()` |
+| `SnapshotTextModal` | 369 | Admin edits snapshot warning / limit text | `validate_text_fields()` &#8594; `GuildRepository.update_config()` |
+| `CloseTextModal` | 401 | Admin edits close request / closing notice / revoke text | `validate_text_fields()` &#8594; `GuildRepository.update_config()` |
+
+Non-persistent views: `ConfigPanelView` and `TextGroupView` (both timeout=300s), created per `/ticket config` invocation.
 
 ---
 
