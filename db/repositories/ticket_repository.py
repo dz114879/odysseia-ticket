@@ -37,6 +37,7 @@ class TicketRepository(BaseRepository):
             transfer_reason=row["transfer_reason"],
             transfer_execute_at=row["transfer_execute_at"],
             transfer_history_json=row["transfer_history_json"],
+            welcome_message_id=row["welcome_message_id"],
             staff_panel_message_id=row["staff_panel_message_id"],
             close_reason=row["close_reason"],
             close_initiated_by=row["close_initiated_by"],
@@ -83,6 +84,7 @@ class TicketRepository(BaseRepository):
                     transfer_reason,
                     transfer_execute_at,
                     transfer_history_json,
+                    welcome_message_id,
                     staff_panel_message_id,
                     close_reason,
                     close_initiated_by,
@@ -96,7 +98,7 @@ class TicketRepository(BaseRepository):
                     snapshot_bootstrapped_at,
                     queued_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 (
                     record.ticket_id,
@@ -118,6 +120,7 @@ class TicketRepository(BaseRepository):
                     record.transfer_reason,
                     record.transfer_execute_at,
                     record.transfer_history_json,
+                    record.welcome_message_id,
                     record.staff_panel_message_id,
                     record.close_reason,
                     record.close_initiated_by,
@@ -152,6 +155,7 @@ class TicketRepository(BaseRepository):
             transfer_reason=record.transfer_reason,
             transfer_execute_at=record.transfer_execute_at,
             transfer_history_json=record.transfer_history_json,
+            welcome_message_id=record.welcome_message_id,
             staff_panel_message_id=record.staff_panel_message_id,
             close_reason=record.close_reason,
             close_initiated_by=record.close_initiated_by,
@@ -198,6 +202,7 @@ class TicketRepository(BaseRepository):
                     transfer_reason,
                     transfer_execute_at,
                     transfer_history_json,
+                    welcome_message_id,
                     staff_panel_message_id,
                     close_reason,
                     close_initiated_by,
@@ -211,7 +216,7 @@ class TicketRepository(BaseRepository):
                     snapshot_bootstrapped_at,
                     queued_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(ticket_id) DO UPDATE SET
                     guild_id = excluded.guild_id,
                     channel_id = excluded.channel_id,
@@ -230,6 +235,7 @@ class TicketRepository(BaseRepository):
                     transfer_reason = excluded.transfer_reason,
                     transfer_execute_at = excluded.transfer_execute_at,
                     transfer_history_json = excluded.transfer_history_json,
+                    welcome_message_id = excluded.welcome_message_id,
                     staff_panel_message_id = excluded.staff_panel_message_id,
                     close_reason = excluded.close_reason,
                     close_initiated_by = excluded.close_initiated_by,
@@ -263,6 +269,7 @@ class TicketRepository(BaseRepository):
                     record.transfer_reason,
                     record.transfer_execute_at,
                     record.transfer_history_json,
+                    record.welcome_message_id,
                     record.staff_panel_message_id,
                     record.close_reason,
                     record.close_initiated_by,
@@ -297,6 +304,7 @@ class TicketRepository(BaseRepository):
             transfer_reason=record.transfer_reason,
             transfer_execute_at=record.transfer_execute_at,
             transfer_history_json=record.transfer_history_json,
+            welcome_message_id=record.welcome_message_id,
             staff_panel_message_id=record.staff_panel_message_id,
             close_reason=record.close_reason,
             close_initiated_by=record.close_initiated_by,
@@ -450,6 +458,7 @@ class TicketRepository(BaseRepository):
         transfer_reason: str | None | object = UNSET,
         transfer_execute_at: str | None | object = UNSET,
         transfer_history_json: str | object = UNSET,
+        welcome_message_id: int | None | object = UNSET,
         staff_panel_message_id: int | None | object = UNSET,
         close_reason: str | None | object = UNSET,
         close_initiated_by: int | None | object = UNSET,
@@ -500,6 +509,8 @@ class TicketRepository(BaseRepository):
             updates["transfer_execute_at"] = transfer_execute_at
         if transfer_history_json is not UNSET:
             updates["transfer_history_json"] = transfer_history_json
+        if welcome_message_id is not UNSET:
+            updates["welcome_message_id"] = welcome_message_id
         if staff_panel_message_id is not UNSET:
             updates["staff_panel_message_id"] = staff_panel_message_id
         if close_reason is not UNSET:

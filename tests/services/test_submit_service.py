@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import discord
@@ -11,6 +12,7 @@ from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
 from discord_ui.staff_panel_view import StaffPanelView
+from runtime.locks import LockManager
 from services.snapshot_service import SnapshotBootstrapResult
 from services.capacity_service import CapacityService
 from services.queue_service import QueueService
@@ -114,6 +116,12 @@ class FakeChannel:
     async def pins(self) -> list[FakeMessage]:
         return list(self.pinned_messages)
 
+    async def fetch_message(self, message_id: int) -> FakeMessage:
+        for message in [*self.pinned_messages, *self.sent_messages]:
+            if message.id == message_id:
+                return message
+        raise LookupError(message_id)
+
 
 class FakeSnapshotService:
     def __init__(self, *, bootstrap_errors: list[Exception] | None = None) -> None:
@@ -124,6 +132,29 @@ class FakeSnapshotService:
         self.calls.append({"ticket": ticket, "channel": channel})
         if self.bootstrap_errors:
             raise self.bootstrap_errors.pop(0)
+        bootstrapped_ticket = (
+            TicketRepository(self.database).update(
+                ticket.ticket_id,
+                snapshot_bootstrapped_at="2024-01-01T01:10:00+00:00",
+                message_count=1,
+            )
+            or ticket
+        )
+        return SnapshotBootstrapResult(ticket=bootstrapped_ticket, create_count=1, skipped=False)
+
+
+class BlockingSnapshotService(FakeSnapshotService):
+    def __init__(self, *, blocked_ticket_ids: set[str]) -> None:
+        super().__init__()
+        self.blocked_ticket_ids = set(blocked_ticket_ids)
+        self.block_started = asyncio.Event()
+        self.release_block = asyncio.Event()
+
+    async def bootstrap_from_channel_history(self, ticket: TicketRecord, channel: FakeChannel) -> SnapshotBootstrapResult:
+        self.calls.append({"ticket": ticket, "channel": channel})
+        if ticket.ticket_id in self.blocked_ticket_ids:
+            self.block_started.set()
+            await self.release_block.wait()
         bootstrapped_ticket = (
             TicketRepository(self.database).update(
                 ticket.ticket_id,
@@ -191,6 +222,7 @@ def prepared_submit_context(migrated_database):
             updated_at="2024-01-01T00:00:00+00:00",
             has_user_message=True,
             last_user_message_at="2024-01-01T01:00:00+00:00",
+            welcome_message_id=5001,
         )
     )
     channel = FakeChannel(
@@ -201,6 +233,7 @@ def prepared_submit_context(migrated_database):
     welcome_message = FakeMessage(
         5001,
         content="您好 <@201>\n- Ticket ID：`1-support-0001`",
+        embed=discord.Embed(title="📋 已创建 技术支持 Ticket"),
         view=SimpleNamespace(name="draft-welcome-view"),
         pinned=True,
     )
@@ -216,6 +249,45 @@ def prepared_submit_context(migrated_database):
         "ticket": ticket,
         "welcome_message": welcome_message,
     }
+
+
+def create_ticket_channel(
+    ticket_repository: TicketRepository,
+    guild: FakeGuild,
+    *,
+    ticket_id: str,
+    creator_id: int,
+    channel_id: int,
+    status: TicketStatus,
+    queued_at: str | None = None,
+) -> tuple[TicketRecord, FakeChannel, FakeMessage]:
+    guild.add_member(FakeMember(creator_id))
+    ticket = ticket_repository.create(
+        TicketRecord(
+            ticket_id=ticket_id,
+            guild_id=guild.id,
+            creator_id=creator_id,
+            category_key="support",
+            channel_id=channel_id,
+            status=status,
+            created_at="2024-01-01T00:10:00+00:00",
+            updated_at="2024-01-01T00:10:00+00:00",
+            has_user_message=True,
+            last_user_message_at="2024-01-01T01:10:00+00:00",
+            queued_at=queued_at,
+            welcome_message_id=channel_id + 4000,
+        )
+    )
+    channel = FakeChannel(channel_id, guild, name="技术支持")
+    welcome_message = FakeMessage(
+        channel_id + 4000,
+        content=f"您好 <@{creator_id}>\n- Ticket ID：`{ticket_id}`",
+        embed=discord.Embed(title="📋 已创建 技术支持 Ticket"),
+        view=SimpleNamespace(name="draft-welcome-view"),
+        pinned=True,
+    )
+    channel.pinned_messages.append(welcome_message)
+    return ticket, channel, welcome_message
 
 
 @pytest.mark.asyncio
@@ -284,6 +356,173 @@ async def test_submit_draft_ticket_bootstraps_snapshot_history_when_snapshot_ser
     assert stored is not None
     assert stored.snapshot_bootstrapped_at == "2024-01-01T01:10:00+00:00"
     assert stored.message_count == 1
+
+
+@pytest.mark.asyncio
+async def test_submit_draft_ticket_uses_persisted_welcome_message_id_instead_of_first_pin(prepared_submit_context) -> None:
+    database = prepared_submit_context["database"]
+    channel = prepared_submit_context["channel"]
+    creator = prepared_submit_context["creator"]
+    welcome_message = prepared_submit_context["welcome_message"]
+    unrelated_pin = FakeMessage(
+        4999,
+        content="Pinned checklist",
+        embed=discord.Embed(title="Pinned checklist"),
+        view=SimpleNamespace(name="unrelated-view"),
+        pinned=True,
+    )
+    channel.pinned_messages.insert(0, unrelated_pin)
+    service = SubmitService(database)
+
+    result = await service.submit_draft_ticket(
+        channel,
+        actor_id=creator.id,
+        requested_title="Login fails badly",
+    )
+
+    assert result.outcome == "submitted"
+    assert result.welcome_message_updated is True
+    assert welcome_message.view is None
+    assert unrelated_pin.view is not None
+
+
+@pytest.mark.asyncio
+async def test_submit_draft_ticket_legacy_welcome_resolution_does_not_clear_unrelated_first_pin(prepared_submit_context) -> None:
+    database = prepared_submit_context["database"]
+    channel = prepared_submit_context["channel"]
+    creator = prepared_submit_context["creator"]
+    ticket = prepared_submit_context["ticket"]
+    welcome_message = prepared_submit_context["welcome_message"]
+    prepared_submit_context["ticket_repository"].update(ticket.ticket_id, welcome_message_id=None)
+    unrelated_pin = FakeMessage(
+        4998,
+        content=f"您好 <@{creator.id}>，这是另一个 pin。\n- Ticket ID：`{ticket.ticket_id}`",
+        embed=discord.Embed(title="Pinned checklist"),
+        view=SimpleNamespace(name="unrelated-view"),
+        pinned=True,
+    )
+    channel.pinned_messages.insert(0, unrelated_pin)
+    service = SubmitService(database)
+
+    result = await service.submit_draft_ticket(
+        channel,
+        actor_id=creator.id,
+        requested_title="Login fails badly",
+    )
+
+    assert result.outcome == "submitted"
+    assert result.welcome_message_updated is True
+    assert welcome_message.view is None
+    assert unrelated_pin.view is not None
+
+
+@pytest.mark.asyncio
+async def test_submit_draft_ticket_releases_guild_lock_before_slow_snapshot_bootstrap(prepared_submit_context) -> None:
+    database = prepared_submit_context["database"]
+    ticket_repository = prepared_submit_context["ticket_repository"]
+    guild = prepared_submit_context["guild"]
+    first_channel = prepared_submit_context["channel"]
+    first_creator = prepared_submit_context["creator"]
+    first_ticket = prepared_submit_context["ticket"]
+    first_welcome_message = prepared_submit_context["welcome_message"]
+    second_ticket, second_channel, second_welcome_message = create_ticket_channel(
+        ticket_repository,
+        guild,
+        ticket_id="1-support-0002",
+        creator_id=202,
+        channel_id=9002,
+        status=TicketStatus.DRAFT,
+    )
+    snapshot_service = BlockingSnapshotService(blocked_ticket_ids={first_ticket.ticket_id})
+    snapshot_service.database = database
+    service = SubmitService(database, snapshot_service=snapshot_service, lock_manager=LockManager())
+
+    first_task = asyncio.create_task(
+        service.submit_draft_ticket(
+            first_channel,
+            actor_id=first_creator.id,
+            requested_title="First ticket",
+            welcome_message=first_welcome_message,
+        )
+    )
+
+    await asyncio.wait_for(snapshot_service.block_started.wait(), timeout=1)
+    first_stored = ticket_repository.get_by_ticket_id(first_ticket.ticket_id)
+    assert first_stored is not None
+    assert first_stored.status is TicketStatus.SUBMITTED
+    assert first_task.done() is False
+
+    second_result = await asyncio.wait_for(
+        service.submit_draft_ticket(
+            second_channel,
+            actor_id=second_ticket.creator_id,
+            requested_title="Second ticket",
+            welcome_message=second_welcome_message,
+        ),
+        timeout=1,
+    )
+    second_stored = ticket_repository.get_by_ticket_id(second_ticket.ticket_id)
+
+    assert second_result.outcome == "submitted"
+    assert second_stored is not None
+    assert second_stored.status is TicketStatus.SUBMITTED
+    assert second_welcome_message.view is None
+
+    snapshot_service.release_block.set()
+    first_result = await asyncio.wait_for(first_task, timeout=1)
+    assert first_result.outcome == "submitted"
+
+
+@pytest.mark.asyncio
+async def test_promote_queued_ticket_releases_guild_lock_before_slow_snapshot_bootstrap(prepared_submit_context) -> None:
+    database = prepared_submit_context["database"]
+    ticket_repository = prepared_submit_context["ticket_repository"]
+    guild = prepared_submit_context["guild"]
+    first_channel = prepared_submit_context["channel"]
+    first_creator = prepared_submit_context["creator"]
+    first_ticket = prepared_submit_context["ticket"]
+    first_welcome_message = prepared_submit_context["welcome_message"]
+    queued_ticket, queued_channel, queued_welcome_message = create_ticket_channel(
+        ticket_repository,
+        guild,
+        ticket_id="1-support-0002",
+        creator_id=202,
+        channel_id=9002,
+        status=TicketStatus.QUEUED,
+        queued_at="2024-01-01T01:05:00+00:00",
+    )
+    snapshot_service = BlockingSnapshotService(blocked_ticket_ids={first_ticket.ticket_id})
+    snapshot_service.database = database
+    service = SubmitService(database, snapshot_service=snapshot_service, lock_manager=LockManager())
+
+    first_task = asyncio.create_task(
+        service.submit_draft_ticket(
+            first_channel,
+            actor_id=first_creator.id,
+            requested_title="First ticket",
+            welcome_message=first_welcome_message,
+        )
+    )
+
+    await asyncio.wait_for(snapshot_service.block_started.wait(), timeout=1)
+    promoted_result = await asyncio.wait_for(
+        service.promote_queued_ticket(
+            queued_channel,
+            ticket_id=queued_ticket.ticket_id,
+        ),
+        timeout=1,
+    )
+    promoted_stored = ticket_repository.get_by_ticket_id(queued_ticket.ticket_id)
+
+    assert promoted_result is not None
+    assert promoted_result.outcome == "submitted"
+    assert promoted_stored is not None
+    assert promoted_stored.status is TicketStatus.SUBMITTED
+    assert queued_welcome_message.view is None
+
+    snapshot_service.release_block.set()
+    first_result = await asyncio.wait_for(first_task, timeout=1)
+    assert first_result.outcome == "submitted"
 
 
 @pytest.mark.asyncio

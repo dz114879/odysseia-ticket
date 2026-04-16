@@ -129,6 +129,7 @@ class CreationService:
                         created_at="",
                         updated_at="",
                         has_user_message=False,
+                        welcome_message_id=getattr(welcome_message, "id", None),
                     )
                 )
             except Exception:

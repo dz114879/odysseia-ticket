@@ -43,7 +43,7 @@ All of these dataclasses are `frozen=True`; repositories return typed records, n
 
 | Repository | Owns | Main Responsibilities | Important Notes |
 |-----------|------|-----------------------|-----------------|
-| `TicketRepository` | `tickets` | create/update/get/list lifecycle rows, due close/transfer lookup, queue ordering lookup | accepts `connection=` for multi-step service transactions |
+| `TicketRepository` | `tickets` | create/update/get/list lifecycle rows, due close/transfer lookup, queue ordering lookup | accepts `connection=` for multi-step service transactions and persists message identity fields such as `welcome_message_id` / `staff_panel_message_id` |
 | `TicketMuteRepository` | `ticket_mutes` | upsert, expire sweep lookup, delete | composite primary key is `(ticket_id, user_id)` |
 | `GuildRepository` | `guild_configs`, `ticket_categories` | config upsert/update, category replace/list/get | one repo owns both guild-level and category-level config surfaces |
 | `PanelRepository` | `panels` | replace active panel, active panel lookup, list restore candidates | one active panel per guild is enforced both in code and by a partial unique index |
@@ -91,8 +91,9 @@ Additional indexes worth keeping explicit:
 | `11` | change default priority to `unset` at application layer only; no SQL statement runs |
 | `12` | add `staff_role_ids_json` and backfill from legacy single `staff_role_id` |
 | `13` | add runtime config fields for timeouts, snapshot limits, and text overrides |
+| `14` | add `tickets.welcome_message_id` so draft welcome view cleanup can target the exact message |
 
-`core/constants.py` currently declares `CURRENT_SCHEMA_VERSION = 13`, and the last migration in `MIGRATIONS` must stay aligned with that value.
+`core/constants.py` currently declares `CURRENT_SCHEMA_VERSION = 14`, and the last migration in `MIGRATIONS` must stay aligned with that value.
 
 ## Hard Rules
 

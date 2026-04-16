@@ -45,15 +45,15 @@ Current control flow:
 3. `SubmitService.submit_draft_ticket()` acquires two locks:
    - `draft-submit:{channel_id}`
    - `ticket-submit-guild:{guild_id}`
-4. The service re-runs the guard checks under lock so modal-time and click-time state cannot drift.
-5. Under the same lock, `SubmitService` opens an explicit database transaction and commits the minimal lifecycle decision first:
+4. The channel lock stays around the whole submit/promotion flow for per-ticket idempotency, while the guild lock is held only for the state-decision critical section.
+5. Under the guild lock, `SubmitService` re-runs the guard checks and opens an explicit database transaction to commit the minimal lifecycle decision first:
    - `already_submitted`: keep `status=submitted`, but build a reconcile plan for missing submitted-side effects.
    - `already_queued`: keep `status=queued` and return the current queue position.
    - `draft` with no capacity: persist `status=queued` and `queued_at` before any Discord-side changes.
    - `draft` with capacity: persist `status=submitted` and clear `queued_at` before any Discord-side changes.
-6. After the transaction commits, the service runs post-commit side effects from that plan:
-   - queued path: rename if needed, remove the welcome view, keep staff hidden.
-   - submitted path: rename if needed, grant staff access, bootstrap snapshots, send the divider for fresh submit/promotion, ensure a staff panel exists, remove the welcome view.
+6. After the transaction commits and the guild lock is released, the service runs post-commit side effects from that plan:
+   - queued path: rename if needed, remove the welcome view by stored `welcome_message_id`, keep staff hidden.
+   - submitted path: rename if needed, grant staff access, bootstrap snapshots, send the divider for fresh submit/promotion, ensure a staff panel exists, remove the welcome view by stored `welcome_message_id`.
    - `already_submitted` path: re-run submitted-side reconciliation so missing permission sync, snapshot bootstrap, staff panel creation, or welcome-view cleanup can be repaired.
 7. `QueueService.process_next_queued_ticket()` later reuses `SubmitService.promote_queued_ticket()` to turn `queued` into `submitted` when capacity becomes available.
 
@@ -124,6 +124,8 @@ If you add a new path that releases active capacity, it should probably trigger 
 - Missing title is collected before deferring by opening `DraftSubmitTitleModal`.
 - Submission checks are intentionally re-run inside locks to avoid double-submit races.
 - Submit/promotion now commit lifecycle state before Discord side effects run.
+- Slow post-commit work such as snapshot bootstrap must stay outside `ticket-submit-guild:{guild_id}` so one large ticket does not serialize all same-guild submits/promotions.
+- Welcome-view cleanup should use persisted message identity. Only legacy rows without `welcome_message_id` may fall back to a stricter pinned-message heuristic.
 - Recovery for partially completed submit work happens by replaying submitted-side reconciliation, not by rolling back a committed `submitted` / `queued` status.
 - Queueing is guild-scoped FIFO, not category-scoped.
 - Capacity is a guild-scoped count of active lifecycle statuses, not a count of all open channels.

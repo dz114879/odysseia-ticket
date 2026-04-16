@@ -53,6 +53,7 @@ def test_apply_migrations_initializes_empty_database(database_manager) -> None:
     assert "transfer_reason" in ticket_column_names
     assert "transfer_execute_at" in ticket_column_names
     assert "transfer_history_json" in ticket_column_names
+    assert "welcome_message_id" in ticket_column_names
     assert "close_reason" in ticket_column_names
     assert "close_initiated_by" in ticket_column_names
     assert "close_execute_at" in ticket_column_names

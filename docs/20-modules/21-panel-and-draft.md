@@ -82,7 +82,7 @@ Current happy path:
 5. builds `ticket_id` as `{guild_id}-{category_slug}-{number:04d}`
 6. creates the Discord channel under `config.ticket_category_channel_id`
 7. sends and pins the draft welcome embed with `DraftWelcomeView`
-8. persists the `TicketRecord` with `status=draft`
+8. persists the `TicketRecord` with `status=draft` and the pinned `welcome_message_id`
 
 If channel creation or welcome-message send fails, the service deletes the just-created channel and aborts.
 
@@ -132,6 +132,7 @@ Current behavior:
 - `DraftWelcomeView` is persistent (`timeout=None`) and registered globally once in `SubmitCog`
 - the view exposes three actions: submit, abandon, rename
 - abandon uses a second ephemeral confirm view with a 60-second timeout
+- the welcome message ID is stored on the ticket row so submit/re-submit paths can clear the correct view later without guessing from pin order
 
 ## Draft Actions And Guardrails
 

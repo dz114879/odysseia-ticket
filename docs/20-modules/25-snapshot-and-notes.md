@@ -50,7 +50,7 @@ Snapshot capture has two phases.
 
 ### Phase 1: bootstrap after the ticket reaches `submitted`
 
-`SubmitService` calls `SnapshotService.bootstrap_from_channel_history()` after the `submitted` state has already been committed.
+`SubmitService` calls `SnapshotService.bootstrap_from_channel_history()` after the `submitted` state has already been committed and after the guild-level submit critical section has been released.
 
 This happens for both:
 
@@ -68,6 +68,7 @@ Bootstrap behavior:
 - overwrites the ticket snapshot file with the bootstrapped `create` records
 - stores `snapshot_bootstrapped_at` and `message_count` on the ticket row
 - seeds runtime cache with latest message state, create count, and threshold flags
+- relies on `SnapshotService`'s own ticket-scoped lock rather than the guild submit lock
 
 Important implication:
 

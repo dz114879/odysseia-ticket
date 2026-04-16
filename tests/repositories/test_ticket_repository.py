@@ -33,6 +33,7 @@ def make_ticket(
     transfer_reason: str | None = None,
     transfer_execute_at: str | None = None,
     transfer_history_json: str = "[]",
+    welcome_message_id: int | None = None,
     staff_panel_message_id: int | None = None,
     close_reason: str | None = None,
     close_initiated_by: int | None = None,
@@ -66,6 +67,7 @@ def make_ticket(
         transfer_reason=transfer_reason,
         transfer_execute_at=transfer_execute_at,
         transfer_history_json=transfer_history_json,
+        welcome_message_id=welcome_message_id,
         staff_panel_message_id=staff_panel_message_id,
         close_reason=close_reason,
         close_initiated_by=close_initiated_by,
@@ -99,6 +101,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
             transfer_reason="需要账单组处理",
             transfer_execute_at="2024-01-01T02:00:00+00:00",
             transfer_history_json='[{"target":"billing"}]',
+            welcome_message_id=2222,
             close_reason="问题已解决",
             close_initiated_by=401,
             close_execute_at="2024-01-01T03:00:00+00:00",
@@ -127,6 +130,7 @@ def test_create_and_get_ticket_preserves_model_mapping(repository: TicketReposit
     assert loaded.transfer_reason == "需要账单组处理"
     assert loaded.transfer_execute_at == "2024-01-01T02:00:00+00:00"
     assert loaded.transfer_history_json == '[{"target":"billing"}]'
+    assert loaded.welcome_message_id == 2222
     assert loaded.has_user_message is True
     assert loaded.last_user_message_at == "2024-01-01T01:00:00+00:00"
     assert loaded.staff_panel_message_id == 3333
@@ -297,6 +301,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
             transfer_reason="sleep 状态下转交",
             transfer_execute_at="2024-02-01T02:00:00+00:00",
             transfer_history_json='[{"target":"billing","status_before":"sleep"}]',
+            welcome_message_id=7001,
             close_reason="已确认完结",
             close_initiated_by=401,
             close_execute_at="2024-02-01T03:00:00+00:00",
@@ -316,6 +321,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
         claimed_by=None,
         priority=TicketPriority.LOW,
         updated_at="2024-03-01T00:00:00+00:00",
+        welcome_message_id=None,
         staff_panel_message_id=8080,
         priority_before_sleep=None,
         last_user_message_at=None,
@@ -352,6 +358,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert upserted.transfer_reason == "sleep 状态下转交"
     assert upserted.transfer_execute_at == "2024-02-01T02:00:00+00:00"
     assert upserted.transfer_history_json == '[{"target":"billing","status_before":"sleep"}]'
+    assert upserted.welcome_message_id == 7001
     assert upserted.close_reason == "已确认完结"
     assert upserted.close_initiated_by == 401
     assert upserted.close_execute_at == "2024-02-01T03:00:00+00:00"
@@ -371,6 +378,7 @@ def test_upsert_update_and_delete_ticket_without_overwriting_unspecified_fields(
     assert updated.claimed_by is None
     assert updated.priority is TicketPriority.LOW
     assert updated.last_user_message_at is None
+    assert updated.welcome_message_id is None
     assert updated.staff_panel_message_id == 8080
     assert updated.priority_before_sleep is None
     assert updated.status_before is None

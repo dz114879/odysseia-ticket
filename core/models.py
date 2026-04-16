@@ -26,6 +26,7 @@ class TicketRecord:
     transfer_reason: str | None = None
     transfer_execute_at: str | None = None
     transfer_history_json: str = "[]"
+    welcome_message_id: int | None = None
     staff_panel_message_id: int | None = None
     close_reason: str | None = None
     close_initiated_by: int | None = None

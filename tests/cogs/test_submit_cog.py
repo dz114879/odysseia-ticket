@@ -91,6 +91,12 @@ class FakeChannel:
     async def pins(self) -> list[FakeMessage]:
         return list(self.pinned_messages)
 
+    async def fetch_message(self, message_id: int) -> FakeMessage:
+        for message in [*self.pinned_messages, *self.sent_messages]:
+            if message.id == message_id:
+                return message
+        raise LookupError(message_id)
+
 
 class FakeResponse:
     def __init__(self) -> None:
@@ -215,6 +221,7 @@ def prepared_submit_cog_context(migrated_database):
             updated_at="2024-01-01T00:00:00+00:00",
             has_user_message=True,
             last_user_message_at="2024-01-01T01:00:00+00:00",
+            welcome_message_id=5001,
         )
     )
     channel = FakeChannel(
@@ -225,6 +232,7 @@ def prepared_submit_cog_context(migrated_database):
     welcome_message = FakeMessage(
         5001,
         content="您好 <@201>\n- Ticket ID：`1-support-0001`",
+        embed=discord.Embed(title="📋 已创建 技术支持 Ticket"),
         view=DraftWelcomeView(),
         pinned=True,
     )
@@ -289,11 +297,13 @@ async def test_submit_current_draft_submits_after_channel_has_custom_name(
     await cog.submit_current_draft(interaction)
 
     stored = TicketRepository(database).get_by_ticket_id(prepared_submit_cog_context["ticket"].ticket_id)
+    welcome_message = prepared_submit_cog_context["welcome_message"]
     assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
     assert interaction.followup.messages
     assert "Ticket 已提交" in interaction.followup.messages[0]["content"]
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
+    assert welcome_message.view is None
 
 
 @pytest.mark.asyncio

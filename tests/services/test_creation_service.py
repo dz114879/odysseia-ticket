@@ -222,6 +222,9 @@ async def test_create_draft_ticket_happy_path_persists_ticket_and_private_channe
     assert result.welcome_message.view is not None
     assert result.welcome_message.embed is not None
     assert "技术支持" in result.welcome_message.embed.title
+    assert result.ticket.welcome_message_id == result.welcome_message.id
+    assert stored_ticket is not None
+    assert stored_ticket.welcome_message_id == result.welcome_message.id
     assert counter is not None
     assert counter.next_number == 2
 

@@ -100,21 +100,21 @@ class SubmitService:
                 actor_id=actor_id,
                 channel_name=getattr(channel, "name", None),
             )
+            old_channel_name = str(getattr(channel, "name", ""))
             async with self._acquire_guild_submission_lock(initial_context.ticket.guild_id):
-                old_channel_name = str(getattr(channel, "name", ""))
                 plan = self._plan_submit_transition(
                     channel_id=channel_id,
                     actor_id=actor_id,
                     channel_name=old_channel_name,
                     requested_title=requested_title,
                 )
-                return await self._apply_submission_plan(
-                    channel=channel,
-                    plan=plan,
-                    old_channel_name=old_channel_name,
-                    requested_title=requested_title,
-                    welcome_message=welcome_message,
-                )
+            return await self._apply_submission_plan(
+                channel=channel,
+                plan=plan,
+                old_channel_name=old_channel_name,
+                requested_title=requested_title,
+                welcome_message=welcome_message,
+            )
 
     async def promote_queued_ticket(
         self,
@@ -131,23 +131,23 @@ class SubmitService:
                 ticket_id=ticket_id,
                 channel_id=channel_id,
             )
+            old_channel_name = str(getattr(channel, "name", ""))
             async with self._acquire_guild_submission_lock(initial_context.ticket.guild_id):
-                old_channel_name = str(getattr(channel, "name", ""))
                 plan = self._plan_queue_promotion(
                     channel_id=channel_id,
                     channel_name=old_channel_name,
                     ticket_id=ticket_id,
                 )
-                if plan is None:
-                    return None
+            if plan is None:
+                return None
 
-                return await self._apply_submission_plan(
-                    channel=channel,
-                    plan=plan,
-                    old_channel_name=old_channel_name,
-                    requested_title=None,
-                    welcome_message=None,
-                )
+            return await self._apply_submission_plan(
+                channel=channel,
+                plan=plan,
+                old_channel_name=old_channel_name,
+                requested_title=None,
+                welcome_message=None,
+            )
 
     def _plan_submit_transition(
         self,
@@ -273,7 +273,11 @@ class SubmitService:
             category=plan.context.category,
             config=plan.context.config,
         )
-        resolved_welcome_message = welcome_message or await self._resolve_welcome_message(channel, ticket_id=updated_ticket.ticket_id)
+        resolved_welcome_message = await self._resolve_welcome_message(
+            channel,
+            ticket=updated_ticket,
+            provided_message=welcome_message,
+        )
         welcome_message_updated = await self._remove_welcome_view(resolved_welcome_message)
         return SubmitDraftResult(
             ticket=updated_ticket,
@@ -302,7 +306,11 @@ class SubmitService:
             reason=f"Queue ticket {plan.ticket.ticket_id} after submit request",
             enabled=(plan.outcome == "queued" or requested_title is not None),
         )
-        resolved_welcome_message = welcome_message or await self._resolve_welcome_message(channel, ticket_id=plan.ticket.ticket_id)
+        resolved_welcome_message = await self._resolve_welcome_message(
+            channel,
+            ticket=plan.ticket,
+            provided_message=welcome_message,
+        )
         welcome_message_updated = await self._remove_welcome_view(resolved_welcome_message)
         return SubmitDraftResult(
             ticket=plan.ticket,
@@ -416,9 +424,40 @@ class SubmitService:
             view=StaffPanelView(),
         )
 
-    async def _resolve_welcome_message(self, channel: Any, *, ticket_id: str) -> Any | None:
+    async def _resolve_welcome_message(
+        self,
+        channel: Any,
+        *,
+        ticket: TicketRecord,
+        provided_message: Any | None,
+    ) -> Any | None:
+        stored_message_id = ticket.welcome_message_id
+        if provided_message is not None:
+            provided_message_id = getattr(provided_message, "id", None)
+            if stored_message_id is None or provided_message_id == stored_message_id:
+                return provided_message
+
+        if stored_message_id is not None:
+            resolved_message = await self._fetch_message_by_id(channel, stored_message_id)
+            if resolved_message is not None:
+                return resolved_message
+
+        return await self._resolve_legacy_welcome_message(channel, ticket=ticket)
+
+    @staticmethod
+    async def _fetch_message_by_id(channel: Any, message_id: int) -> Any | None:
+        fetch_message = getattr(channel, "fetch_message", None)
+        if not callable(fetch_message):
+            return None
+
+        try:
+            return await fetch_message(message_id)
+        except Exception:
+            return None
+
+    async def _resolve_legacy_welcome_message(self, channel: Any, *, ticket: TicketRecord) -> Any | None:
         pins = getattr(channel, "pins", None)
-        if pins is None:
+        if not callable(pins):
             return None
 
         try:
@@ -426,10 +465,30 @@ class SubmitService:
         except Exception:
             return None
 
-        if not pinned_messages:
-            return None
+        for pinned_message in pinned_messages:
+            if self._is_legacy_welcome_message(pinned_message, ticket=ticket):
+                return pinned_message
 
-        return pinned_messages[0]
+        return None
+
+    @staticmethod
+    def _is_legacy_welcome_message(message: Any, *, ticket: TicketRecord) -> bool:
+        content = str(getattr(message, "content", "") or "")
+        creator_mention = f"<@{ticket.creator_id}>"
+        creator_nick_mention = f"<@!{ticket.creator_id}>"
+        if creator_mention not in content and creator_nick_mention not in content and ticket.ticket_id not in content:
+            return False
+
+        embed_title = SubmitService._get_message_embed_title(message)
+        return embed_title.startswith("📋 已创建")
+
+    @staticmethod
+    def _get_message_embed_title(message: Any) -> str:
+        embed = getattr(message, "embed", None)
+        if embed is None:
+            embeds = getattr(message, "embeds", None) or []
+            embed = embeds[0] if embeds else None
+        return str(getattr(embed, "title", "") or "")
 
     @staticmethod
     async def _remove_welcome_view(message: Any | None) -> bool:

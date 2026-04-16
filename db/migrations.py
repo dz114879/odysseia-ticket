@@ -293,6 +293,13 @@ def _migration_v13_add_runtime_config_columns(connection: sqlite3.Connection) ->
     _execute_statements(connection, _MIGRATION_V13_STATEMENTS)
 
 
+_MIGRATION_V14_STATEMENTS = ("ALTER TABLE tickets ADD COLUMN welcome_message_id INTEGER;",)
+
+
+def _migration_v14_add_welcome_message_tracking(connection: sqlite3.Connection) -> None:
+    _execute_statements(connection, _MIGRATION_V14_STATEMENTS)
+
+
 def _migration_v11_change_default_priority_to_unset(connection: sqlite3.Connection) -> None:
     # SQLite 不支持 ALTER COLUMN DEFAULT，但新行将由应用层 dataclass 默认值 'unset' 控制。
     # 已有 ticket 保持原 priority 不变，无需迁移数据。
@@ -370,6 +377,11 @@ MIGRATIONS = [
         version=13,
         name="add_runtime_config_columns",
         operation=_migration_v13_add_runtime_config_columns,
+    ),
+    Migration(
+        version=14,
+        name="add_welcome_message_tracking",
+        operation=_migration_v14_add_welcome_message_tracking,
     ),
 ]
 

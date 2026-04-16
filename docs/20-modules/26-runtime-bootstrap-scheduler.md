@@ -176,6 +176,12 @@ The generic `latest_messages` and `flags` caches exist for broader runtime use, 
 
 Cleanup removes only unlocked stale entries, so active operations are never force-evicted.
 
+For submit/promotion specifically:
+
+- `ticket-submit-guild:{guild_id}` is only the guild-wide decision/commit critical section
+- slow post-commit work such as snapshot bootstrap is expected to run after that lock is released
+- `ticket-snapshot:{ticket_id}` is the narrower lock that keeps snapshot bootstrap and live snapshot writes idempotent per ticket
+
 ### Debounce
 
 `DebounceManager.schedule()` replaces any existing task with the same key.
