@@ -27,3 +27,7 @@ storage/exports/
 # Claude Code
 .claude/
 CLAUDE.md
+
+# Codex
+
+AGENTS.md

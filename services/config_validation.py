@@ -18,11 +18,10 @@ def validate_basic_settings(
     if tz_raw:
         try:
             ZoneInfo(tz_raw)
-            parsed["timezone"] = tz_raw
+            if tz_raw != current.timezone:
+                parsed["timezone"] = tz_raw
         except (KeyError, ValueError):
             errors.append(f"无效的时区：{tz_raw!r}，请使用 IANA 时区名（如 Asia/Shanghai）。")
-    elif tz_raw == "" and "timezone" in raw:
-        parsed["timezone"] = current.timezone
 
     max_raw = raw.get("max_open_tickets", "").strip()
     if max_raw:
@@ -30,7 +29,7 @@ def validate_basic_settings(
             val = int(max_raw)
             if not 1 <= val <= 1000:
                 errors.append("活跃工单上限必须在 1-1000 之间。")
-            else:
+            elif val != current.max_open_tickets:
                 parsed["max_open_tickets"] = val
         except ValueError:
             errors.append("活跃工单上限必须是整数。")
@@ -38,16 +37,20 @@ def validate_basic_settings(
     mode_raw = raw.get("claim_mode", "").strip().lower()
     if mode_raw:
         if mode_raw in ("relaxed", "strict"):
-            parsed["claim_mode"] = ClaimMode(mode_raw)
+            mode = ClaimMode(mode_raw)
+            if mode is not current.claim_mode:
+                parsed["claim_mode"] = mode
         else:
             errors.append("认领模式必须是 relaxed 或 strict。")
 
     dw_raw = raw.get("enable_download_window", "").strip().lower()
     if dw_raw:
         if dw_raw in ("true", "1", "是", "yes", "on"):
-            parsed["enable_download_window"] = True
+            if current.enable_download_window is not True:
+                parsed["enable_download_window"] = True
         elif dw_raw in ("false", "0", "否", "no", "off"):
-            parsed["enable_download_window"] = False
+            if current.enable_download_window is not False:
+                parsed["enable_download_window"] = False
         else:
             errors.append("下载窗口必须是 是/否 或 true/false。")
 
@@ -71,7 +74,7 @@ def validate_draft_timeouts(
                 val = int(val_raw)
                 if not lo <= val <= hi:
                     errors.append(f"{label}必须在 {lo}-{hi} 之间。")
-                else:
+                elif val != getattr(current, field):
                     parsed[field] = val
             except ValueError:
                 errors.append(f"{label}必须是整数。")
@@ -97,7 +100,7 @@ def validate_close_transfer(
                 val = int(val_raw)
                 if not lo <= val <= hi:
                     errors.append(f"{label}必须在 {lo}-{hi} 秒之间。")
-                else:
+                elif val != getattr(current, field):
                     parsed[field] = val
             except ValueError:
                 errors.append(f"{label}必须是整数。")
@@ -122,7 +125,7 @@ def validate_snapshot_limits(
                 val = int(val_raw)
                 if not 100 <= val <= 10000:
                     errors.append(f"{label}必须在 100-10000 之间。")
-                else:
+                elif val != getattr(current, field):
                     parsed[field] = val
             except ValueError:
                 errors.append(f"{label}必须是整数。")
@@ -137,7 +140,7 @@ def validate_snapshot_limits(
 
 _TEXT_FIELD_LIMITS: dict[str, tuple[str, int]] = {
     "panel_title": ("面板标题", 256),
-    "panel_description": ("面板描述", 4096),
+    "panel_description": ("面板正文", 4096),
     "panel_bullet_points": ("面板要点", 1024),
     "panel_footer_text": ("面板页脚", 2048),
     "draft_welcome_text": ("草稿欢迎文案", 4000),

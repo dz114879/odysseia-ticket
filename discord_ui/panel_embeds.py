@@ -3,11 +3,11 @@ from __future__ import annotations
 import discord
 
 from config.defaults import (
-    DEFAULT_PANEL_BULLET_POINTS,
+    DEFAULT_PANEL_BODY,
     DEFAULT_PANEL_CAPACITY_TEXT,
-    DEFAULT_PANEL_DESCRIPTION,
     DEFAULT_PANEL_FOOTER_TEXT,
     DEFAULT_PANEL_TITLE,
+    build_public_panel_body,
 )
 from core.constants import TRANSFER_EXECUTION_DELAY_SECONDS
 from core.enums import ClaimMode, TicketPriority, TicketStatus
@@ -16,15 +16,20 @@ from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
 
 def build_public_panel_embed(categories: list[TicketCategoryConfig], *, config: GuildConfigRecord | None = None) -> discord.Embed:
     title = (config.panel_title if config and config.panel_title else DEFAULT_PANEL_TITLE)
-    description = (config.panel_description if config and config.panel_description else DEFAULT_PANEL_DESCRIPTION)
-    bullet_points = (config.panel_bullet_points if config and config.panel_bullet_points else DEFAULT_PANEL_BULLET_POINTS)
+    description = (
+        build_public_panel_body(
+            description=config.panel_description if config else None,
+            bullet_points=config.panel_bullet_points if config else None,
+        )
+        if config
+        else DEFAULT_PANEL_BODY
+    )
     footer = (config.panel_footer_text if config and config.panel_footer_text else DEFAULT_PANEL_FOOTER_TEXT)
     embed = discord.Embed(
         title=title,
         description=description,
         color=discord.Color.blurple(),
     )
-    embed.add_field(name="支持事项", value=bullet_points, inline=False)
     embed.add_field(
         name="可选分类",
         value=_format_category_lines(categories),

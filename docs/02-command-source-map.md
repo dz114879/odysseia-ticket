@@ -143,18 +143,17 @@ Non-persistent view: `CloseRequestView` (line 17, has a timeout), created each t
 
 | Component | Line | Trigger | Call Chain |
 |-----------|------|---------|------------|
-| `ConfigCategorySelect` | 80 | Admin selects a setting category | Opens the corresponding Modal (basic / draft / close / snapshot) or shows `TextGroupView` for text settings |
-| `ConfigPanelView` | 118 | Container for `ConfigCategorySelect` | Ephemeral, timeout=300 |
-| `TextGroupSelect` | 127 | Admin selects a text group | Opens the corresponding text Modal (panel / draft welcome / snapshot / close) |
-| `TextGroupView` | 153 | Container for `TextGroupSelect` | Ephemeral, timeout=300 |
-| `BasicSettingsModal` | 162 | Admin edits timezone, max tickets, claim mode, download window | `validate_basic_settings()` &#8594; `GuildRepository.update_config()` |
-| `DraftTimeoutModal` | 201 | Admin edits inactive close / abandon timeout hours | `validate_draft_timeouts()` &#8594; `GuildRepository.update_config()` |
-| `CloseTransferModal` | 234 | Admin edits transfer delay, close revoke window, close request timeout | `validate_close_transfer()` &#8594; `GuildRepository.update_config()` |
-| `SnapshotLimitsModal` | 270 | Admin edits snapshot warning threshold / limit | `validate_snapshot_limits()` &#8594; `GuildRepository.update_config()` |
-| `PanelTextModal` | 306 | Admin edits panel title, description, bullet points, footer | `validate_text_fields()` &#8594; `GuildRepository.update_config()` &#8594; `PanelService.refresh_active_panel()` |
-| `DraftWelcomeTextModal` | 342 | Admin edits draft welcome text | `validate_text_fields()` &#8594; `GuildRepository.update_config()` |
-| `SnapshotTextModal` | 369 | Admin edits snapshot warning / limit text | `validate_text_fields()` &#8594; `GuildRepository.update_config()` |
-| `CloseTextModal` | 401 | Admin edits close request / closing notice / revoke text | `validate_text_fields()` &#8594; `GuildRepository.update_config()` |
+| `ConfigCategorySelect` | 154 | Admin selects a setting category | Opens the corresponding Modal (basic / draft / close / snapshot) or shows `TextGroupView` for text settings |
+| `ConfigPanelView` | 192 | Container for `ConfigCategorySelect` | Ephemeral, timeout=300 |
+| `TextGroupSelect` | 201 | Admin selects a text group | Opens the corresponding text Modal (panel / draft welcome / snapshot) |
+| `TextGroupView` | 225 | Container for `TextGroupSelect` | Ephemeral, timeout=300 |
+| `BasicSettingsModal` | 268 | Admin edits timezone / max tickets and chooses claim mode / download window from selects | `validate_basic_settings()` &#8594; `GuildRepository.update_config()` |
+| `DraftTimeoutModal` | 336 | Admin edits inactive close / abandon timeout hours | `validate_draft_timeouts()` &#8594; `GuildRepository.update_config()` |
+| `CloseTransferModal` | 369 | Admin edits transfer delay, close revoke window, close request timeout | `validate_close_transfer()` &#8594; `GuildRepository.update_config()` |
+| `SnapshotLimitsModal` | 405 | Admin edits snapshot warning threshold / limit | `validate_snapshot_limits()` &#8594; `GuildRepository.update_config()` |
+| `PanelTextModal` | 441 | Admin edits panel title / merged body / footer | `validate_text_fields()` &#8594; `GuildRepository.update_config()` &#8594; `PanelService.refresh_active_panel()` |
+| `DraftWelcomeTextModal` | 500 | Admin edits draft welcome text | `validate_text_fields()` &#8594; current effective text compare &#8594; `GuildRepository.update_config()` |
+| `SnapshotTextModal` | 536 | Admin edits snapshot warning / limit text | `validate_text_fields()` &#8594; current effective text compare &#8594; `GuildRepository.update_config()` |
 
 Non-persistent views: `ConfigPanelView` and `TextGroupView` (both timeout=300s), created per `/ticket config` invocation.
 

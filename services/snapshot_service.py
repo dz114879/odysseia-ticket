@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from collections.abc import AsyncIterator
 
+from config.defaults import build_default_snapshot_limit_text, build_default_snapshot_warning_text
 from core.constants import SNAPSHOT_CREATE_LIMIT, SNAPSHOT_CREATE_WARNING_THRESHOLD
 from core.enums import TicketStatus
 from core.models import TicketRecord
@@ -520,7 +521,7 @@ class SnapshotService:
             warning_text = (
                 config.snapshot_warning_text
                 if config and config.snapshot_warning_text
-                else f"⚠️ 本 Ticket 内消息数接近BOT记录上限（{limit}条），建议总结后重开 Ticket 继续讨论。 ⚠️"
+                else build_default_snapshot_warning_text(limit=limit)
             )
             await send(content=warning_text)
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_900")
@@ -529,7 +530,7 @@ class SnapshotService:
             limit_text = (
                 config.snapshot_limit_text
                 if config and config.snapshot_limit_text
-                else f"⚠️ 本 Ticket 消息数已达记录上限（{limit}条），新消息将不再被快照系统记录。 ⚠️"
+                else build_default_snapshot_limit_text(limit=limit)
             )
             await send(content=limit_text)
             self.cache.set_snapshot_threshold_flag(channel_id, "warn_1000")

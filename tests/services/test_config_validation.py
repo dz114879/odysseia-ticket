@@ -55,7 +55,7 @@ class TestValidateBasicSettings:
 
     def test_download_window_true_variants(self):
         for val in ("true", "1", "是", "yes", "on"):
-            parsed, errors = validate_basic_settings({"enable_download_window": val}, _default_config())
+            parsed, errors = validate_basic_settings({"enable_download_window": val}, _default_config(enable_download_window=False))
             assert not errors
             assert parsed["enable_download_window"] is True
 
@@ -69,13 +69,18 @@ class TestValidateBasicSettings:
         _, errors = validate_basic_settings({"enable_download_window": "maybe"}, _default_config())
         assert len(errors) == 1
 
+    def test_download_window_same_value_is_ignored(self):
+        parsed, errors = validate_basic_settings({"enable_download_window": "true"}, _default_config(enable_download_window=True))
+        assert not errors
+        assert not parsed
+
     def test_empty_fields_no_change(self):
         parsed, errors = validate_basic_settings(
             {"timezone": "", "max_open_tickets": "", "claim_mode": "", "enable_download_window": ""},
             _default_config(),
         )
         assert not errors
-        assert not parsed or "timezone" in parsed
+        assert not parsed
 
 
 # ── validate_draft_timeouts ────────────────────────────────────

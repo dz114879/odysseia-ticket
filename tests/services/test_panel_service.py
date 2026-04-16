@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from config.defaults import DEFAULT_PANEL_BODY
 from core.enums import ClaimMode
 from core.errors import StaleInteractionError
 from core.models import GuildConfigRecord, TicketCategoryConfig
@@ -129,6 +130,8 @@ async def test_create_panel_publishes_message_and_persists_active_record(
 
     assert stored == result.record
     assert result.message.embed.title == "🎫 Ticket 支持中心"
+    assert result.message.embed.description == DEFAULT_PANEL_BODY
+    assert [field.name for field in result.message.embed.fields] == ["可选分类", "容量状态"]
     assert len(result.message.view.children) == 1
     select = result.message.view.children[0]
     assert select.custom_id.startswith("panel:create:1:")
@@ -226,3 +229,46 @@ def test_preview_panel_request_requires_active_panel(migrated_database) -> None:
             nonce="nonce",
             category_key="support",
         )
+
+
+@pytest.mark.asyncio
+async def test_create_panel_uses_description_only_when_legacy_bullets_empty(
+    migrated_database,
+    prepared_guild,
+) -> None:
+    repository, channel = prepared_guild
+    repository.update_config(1, panel_description="仅正文")
+    service = PanelService(migrated_database, bot=FakeBot(channel))
+
+    result = await service.create_panel(channel, created_by=42)
+
+    assert result.message.embed.description == "仅正文"
+    assert [field.name for field in result.message.embed.fields] == ["可选分类", "容量状态"]
+
+
+@pytest.mark.asyncio
+async def test_create_panel_uses_legacy_bullet_points_only_when_description_empty(
+    migrated_database,
+    prepared_guild,
+) -> None:
+    repository, channel = prepared_guild
+    repository.update_config(1, panel_description=None, panel_bullet_points="- 第一项\n- 第二项")
+    service = PanelService(migrated_database, bot=FakeBot(channel))
+
+    result = await service.create_panel(channel, created_by=42)
+
+    assert result.message.embed.description == "- 第一项\n- 第二项"
+
+
+@pytest.mark.asyncio
+async def test_create_panel_merges_legacy_description_and_bullets_into_single_body(
+    migrated_database,
+    prepared_guild,
+) -> None:
+    repository, channel = prepared_guild
+    repository.update_config(1, panel_description="在这里，您可以：", panel_bullet_points="- 第一项\n- 第二项")
+    service = PanelService(migrated_database, bot=FakeBot(channel))
+
+    result = await service.create_panel(channel, created_by=42)
+
+    assert result.message.embed.description == "在这里，您可以：\n- 第一项\n- 第二项"
