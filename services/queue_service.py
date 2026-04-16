@@ -111,21 +111,10 @@ class QueueService:
         *,
         connection: sqlite3.Connection | None = None,
     ) -> int | None:
-        ticket = self.ticket_repository.get_by_ticket_id(
+        return self.ticket_repository.get_queue_position(
             ticket_id,
             connection=connection,
         )
-        if ticket is None or ticket.status is not TicketStatus.QUEUED:
-            return None
-
-        queued_tickets = self.ticket_repository.list_queued_by_guild(
-            ticket.guild_id,
-            connection=connection,
-        )
-        for index, queued_ticket in enumerate(queued_tickets, start=1):
-            if queued_ticket.ticket_id == ticket_id:
-                return index
-        return None
 
     async def sweep_queued_tickets(self) -> list[QueueProcessResult]:
         queued_tickets = self.ticket_repository.list_by_statuses([TicketStatus.QUEUED])
@@ -206,10 +195,23 @@ class QueueService:
                 return self._build_abandoned_result(abandoned_ticket, abandoned_position)
 
             if creator_resolution.value is None:
-                await self._try_delete_channel(
+                channel_deleted = await self._try_delete_channel(
                     channel,
                     reason=f"Abandon queued ticket {ticket.ticket_id} because creator is unavailable",
                 )
+                if not channel_deleted:
+                    self.logger.warning(
+                        "Queued ticket cleanup deferred because creator is unavailable but channel deletion failed. ticket_id=%s channel_id=%s",
+                        ticket.ticket_id,
+                        ticket.channel_id,
+                    )
+                    await self._send_ticket_log(
+                        ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
+                        f"排队 ticket 推进延迟：创建者不可用，且频道删除失败，将在后续 queue sweep 重试清理 (creator_id={ticket.creator_id})",
+                        log_channel_id=getattr(config, "log_channel_id", None),
+                    )
+                    return self._build_abandoned_result(abandoned_ticket, abandoned_position)
+
                 abandoned_ticket = self._mark_abandoned(
                     ticket,
                     reason="creator is unavailable while promoting queued ticket",
@@ -366,12 +368,15 @@ class QueueService:
             return _QueueResolutionResult(value=None, outcome="missing")
         return _QueueResolutionResult(value=member, outcome="resolved")
 
-    async def _try_delete_channel(self, channel: Any, *, reason: str) -> None:
+    async def _try_delete_channel(self, channel: Any, *, reason: str) -> bool:
         delete = getattr(channel, "delete", None)
         if delete is None:
-            return
+            return False
         try:
             await delete(reason=reason)
+            return True
+        except discord.NotFound:
+            return True
         except Exception as exc:
             channel_id = getattr(channel, "id", None)
             self.logger.warning(
@@ -389,6 +394,7 @@ class QueueService:
                     channel_id=getattr(config, "log_channel_id", None) if config else None,
                     extra={"channel_id": str(channel_id)},
                 )
+            return False
 
     def _mark_abandoned(self, ticket: TicketRecord, *, reason: str) -> TicketRecord:
         self.logger.warning("Queued ticket abandoned. ticket_id=%s reason=%s", ticket.ticket_id, reason)

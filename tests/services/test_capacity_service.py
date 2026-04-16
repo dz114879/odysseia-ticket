@@ -63,3 +63,31 @@ def test_capacity_service_released_capacity_detects_active_to_inactive_transitio
     assert CapacityService.released_capacity(TicketStatus.ARCHIVE_SENT, TicketStatus.CHANNEL_DELETED) is True
     assert CapacityService.released_capacity(TicketStatus.TRANSFERRING, TicketStatus.SUBMITTED) is False
     assert CapacityService.released_capacity(TicketStatus.QUEUED, TicketStatus.SUBMITTED) is False
+
+
+def test_capacity_service_count_active_tickets_supports_exclude_ticket_id(migrated_database) -> None:
+    repository = TicketRepository(migrated_database)
+    first_ticket = TicketRecord(
+        ticket_id="ticket-submitted-1",
+        guild_id=1,
+        creator_id=101,
+        category_key="support",
+        channel_id=9101,
+        status=TicketStatus.SUBMITTED,
+    )
+    repository.create(first_ticket)
+    repository.create(
+        TicketRecord(
+            ticket_id="ticket-submitted-2",
+            guild_id=1,
+            creator_id=102,
+            category_key="support",
+            channel_id=9102,
+            status=TicketStatus.SUBMITTED,
+        )
+    )
+
+    service = CapacityService(migrated_database)
+
+    assert service.count_active_tickets(1) == 2
+    assert service.count_active_tickets(1, exclude_ticket_id=first_ticket.ticket_id) == 1

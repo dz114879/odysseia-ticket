@@ -29,7 +29,7 @@ Current end-to-end flow:
 3. `SubmitService.submit_draft_ticket()` evaluates the draft:
    - If capacity is available, the ticket becomes `submitted`.
    - If capacity is full, the ticket becomes `queued`.
-4. `QueueService.process_next_queued_ticket()` promotes queued tickets to `submitted` when capacity is available, or marks broken queued tickets as `abandoned`.
+4. `QueueService.process_next_queued_ticket()` promotes queued tickets to `submitted` when capacity is available, abandons queued tickets whose source channel is permanently gone, and only abandons creator-missing queued tickets after orphaned-channel cleanup succeeds.
 5. From `submitted`, staff-side flows can mutate claim/priority/mute metadata, move the ticket to `sleep`, start a delayed category transfer, or start closing.
 6. `sleep` can wake back to `submitted` on any new non-bot message in the channel if the guild still has active capacity.
 7. `transferring` is a scheduled intermediate state. It restores to `submitted` or `sleep` when canceled or when the delayed execution completes.
@@ -65,7 +65,7 @@ All persisted lifecycle states come from `core/enums.py:TicketStatus` and are st
 | `draft` -> `queued` | `SubmitService` | `SubmissionGuardService.inspect_submission()`, no capacity available | under the guild submit lock commit `status=queued` and `queued_at` first, then outside that guild-critical section rename channel if needed, keep staff hidden, clear the persisted draft welcome message view |
 | `draft` -> `abandoned` | `DraftService`, `DraftTimeoutService` | creator-only or timeout check | delete channel; roll back to `draft` if delete fails |
 | `queued` -> `submitted` | `QueueService` -> `SubmitService.promote_queued_ticket()` | channel and creator must still resolve, `SubmissionGuardService.inspect_queued_promotion()`, capacity available | same side effects as normal submit, but divider text indicates auto-promotion |
-| `queued` -> `abandoned` | `QueueService` | permanent missing channel or creator | optionally delete orphaned channel, clear `queued_at`, continue scanning later queued tickets |
+| `queued` -> `abandoned` | `QueueService` | permanent missing channel, or permanent missing creator after orphaned-channel deletion succeeds | clear `queued_at`; creator-missing cleanup must not mark `abandoned` before the channel is gone |
 | `submitted` -> `sleep` | `SleepService` | `StaffGuardService`, submitted-only | rename channel with sleep prefix, store `priority_before_sleep`, sync permissions, trigger queue fill |
 | `sleep` -> `submitted` | `SleepService` | new non-bot message, capacity available | restore previous priority, rename channel, sync permissions |
 | `submitted/sleep` -> `transferring` | `TransferService` | `StaffGuardService`, claimer rules, enabled target category, extra capacity check when source state is `sleep` | store `status_before`, target category, reason, delayed execute time |
@@ -90,6 +90,7 @@ All persisted lifecycle states come from `core/enums.py:TicketStatus` and are st
 - Permission changes must stay aligned with lifecycle transitions. In particular, queued tickets must not silently gain staff visibility.
 - Submit and queued-promotion lifecycle commits happen before Discord-side effects; missing submitted-side effects are repaired by later reconciliation instead of undoing the committed status.
 - The guild submit lock protects only submit/promotion decision and commit. Slow post-commit work such as snapshot bootstrap must not hold that lock across the whole guild.
+- A creator-missing queued ticket must stay `queued` if orphaned-channel deletion fails; later queue sweeps retry cleanup instead of writing a terminal `abandoned` state early.
 - The archive pipeline must be idempotent enough for bootstrap recovery, scheduled recovery sweeps, and channel-delete recovery to resume partially completed flows.
 - `abandoned` and `done` are terminal in the current design. There is no built-in reopen path.
 
@@ -97,7 +98,8 @@ All persisted lifecycle states come from `core/enums.py:TicketStatus` and are st
 
 - Draft warnings are sent one hour before timeout, but only while the ticket is still `draft`.
 - A queued ticket is deferred, not abandoned, when channel/member resolution fails due to temporary Discord errors.
-- A queued ticket is abandoned when its source channel is gone or its creator is no longer resolvable.
+- A queued ticket is abandoned when its source channel is gone.
+- A queued ticket whose creator is no longer resolvable is abandoned only after orphaned-channel deletion succeeds; otherwise it stays `queued` so later sweeps can retry cleanup.
 - Transfer and close initiated from `sleep` require spare active capacity because they move the ticket back into a capacity-consuming state.
 - `archive_failed` can be auto-retried only for a limited set of retryable error tokens and only up to the retry limit.
 - `on_guild_channel_delete` routes missing-channel cases into `RecoveryService.handle_channel_deleted()`, which may force fallback transcript generation.

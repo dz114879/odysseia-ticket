@@ -65,12 +65,12 @@ class CapacityService:
         exclude_ticket_id: str | None = None,
         connection: sqlite3.Connection | None = None,
     ) -> int:
-        active_tickets = self.ticket_repository.list_by_guild(
+        return self.ticket_repository.count_by_guild_statuses(
             guild_id,
             statuses=ACTIVE_CAPACITY_STATUSES,
+            exclude_ticket_id=exclude_ticket_id,
             connection=connection,
         )
-        return sum(1 for ticket in active_tickets if exclude_ticket_id is None or ticket.ticket_id != exclude_ticket_id)
 
     @staticmethod
     def is_capacity_consuming_status(status: TicketStatus | None) -> bool:

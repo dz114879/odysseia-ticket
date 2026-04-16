@@ -215,7 +215,7 @@ Bootstrap currently registers exactly these handlers:
 | `ticket.transfer_execute_sweep` | `_run_transfer_execute_sweep()` | `TransferService.sweep_due_transfers()` | execute delayed category transfers |
 | `ticket.mute_expire_sweep` | `_run_mute_expire_sweep()` | `ModerationService.sweep_expired_mutes()` | lift expired ticket mutes |
 | `ticket.archive_recovery_sweep` | `_run_archive_recovery_sweep()` | `RecoveryService.sweep_recoverable_tickets()` | resume due closing/archive flows and retry allowed archive failures |
-| `ticket.queue_sweep` | `_run_queue_sweep()` | `QueueService.sweep_queued_tickets()` | promote or abandon queued tickets as capacity allows |
+| `ticket.queue_sweep` | `_run_queue_sweep()` | `QueueService.sweep_queued_tickets()` | promote queued tickets, abandon broken ones after cleanup succeeds, and retry queued orphan cleanup as capacity allows |
 
 Important note:
 

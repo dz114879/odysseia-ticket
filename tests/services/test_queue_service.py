@@ -88,7 +88,7 @@ class FakeGuild:
 
 
 class FakeChannel:
-    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str) -> None:
+    def __init__(self, channel_id: int, guild: FakeGuild, *, name: str, delete_error: Exception | None = None) -> None:
         self.id = channel_id
         self.guild = guild
         self.name = name
@@ -96,6 +96,7 @@ class FakeChannel:
         self.sent_messages: list[FakeMessage] = []
         self.permission_calls: list[dict] = []
         self.deleted = False
+        self.delete_error = delete_error
 
     async def edit(self, *, name=None, reason=None, **kwargs) -> None:
         if name is not None:
@@ -114,6 +115,8 @@ class FakeChannel:
         return []
 
     async def delete(self, *, reason: str | None = None) -> None:
+        if self.delete_error is not None:
+            raise self.delete_error
         self.deleted = True
 
 
@@ -327,6 +330,97 @@ async def test_process_next_queued_ticket_fetches_creator_when_member_is_not_cac
     assert outcome.action == "promoted"
     assert outcome.ticket.ticket_id == "1-support-0001"
     assert first_ticket is not None and first_ticket.status is TicketStatus.SUBMITTED
+
+
+@pytest.mark.asyncio
+async def test_process_next_queued_ticket_abandons_missing_creator_only_after_channel_delete_succeeds(prepared_queue_context) -> None:
+    database = prepared_queue_context["database"]
+    repository = prepared_queue_context["ticket_repository"]
+    channels = prepared_queue_context["channels"]
+    channels[9001].guild.members.pop(201)
+    service = QueueService(
+        database,
+        bot=FakeBot(channels),
+        capacity_service=CapacityService(database),
+        lock_manager=LockManager(),
+    )
+
+    outcome = await service.process_next_queued_ticket(1)
+
+    first_ticket = repository.get_by_ticket_id("1-support-0001")
+    second_ticket = repository.get_by_ticket_id("1-support-0002")
+    assert outcome is not None
+    assert outcome.action == "promoted"
+    assert outcome.ticket.ticket_id == "1-support-0002"
+    assert first_ticket is not None and first_ticket.status is TicketStatus.ABANDONED
+    assert first_ticket.queued_at is None
+    assert second_ticket is not None and second_ticket.status is TicketStatus.SUBMITTED
+    assert channels[9001].deleted is True
+
+
+@pytest.mark.asyncio
+async def test_process_next_queued_ticket_keeps_missing_creator_ticket_queued_when_channel_delete_fails(prepared_queue_context) -> None:
+    database = prepared_queue_context["database"]
+    repository = prepared_queue_context["ticket_repository"]
+    channels = prepared_queue_context["channels"]
+    channels[9001].guild.members.pop(201)
+    channels[9001].delete_error = make_discord_http_exception(
+        discord.HTTPException,
+        status=503,
+        reason="Service Unavailable",
+        message="temporary outage",
+    )
+    service = QueueService(
+        database,
+        bot=FakeBot(channels),
+        capacity_service=CapacityService(database),
+        lock_manager=LockManager(),
+    )
+
+    outcome = await service.process_next_queued_ticket(1)
+
+    first_ticket = repository.get_by_ticket_id("1-support-0001")
+    second_ticket = repository.get_by_ticket_id("1-support-0002")
+    assert outcome is None
+    assert first_ticket is not None and first_ticket.status is TicketStatus.QUEUED
+    assert first_ticket.queued_at == "2024-01-01T01:00:00+00:00"
+    assert second_ticket is not None and second_ticket.status is TicketStatus.QUEUED
+    assert channels[9001].deleted is False
+    assert not channels[9002].sent_messages
+
+
+@pytest.mark.asyncio
+async def test_process_next_queued_ticket_retries_missing_creator_cleanup_after_delete_failure(prepared_queue_context) -> None:
+    database = prepared_queue_context["database"]
+    repository = prepared_queue_context["ticket_repository"]
+    channels = prepared_queue_context["channels"]
+    channels[9001].guild.members.pop(201)
+    channels[9001].delete_error = make_discord_http_exception(
+        discord.HTTPException,
+        status=503,
+        reason="Service Unavailable",
+        message="temporary outage",
+    )
+    service = QueueService(
+        database,
+        bot=FakeBot(channels),
+        capacity_service=CapacityService(database),
+        lock_manager=LockManager(),
+    )
+
+    first_outcome = await service.process_next_queued_ticket(1)
+    channels[9001].delete_error = None
+    second_outcome = await service.process_next_queued_ticket(1)
+
+    first_ticket = repository.get_by_ticket_id("1-support-0001")
+    second_ticket = repository.get_by_ticket_id("1-support-0002")
+    assert first_outcome is None
+    assert second_outcome is not None
+    assert second_outcome.action == "promoted"
+    assert second_outcome.ticket.ticket_id == "1-support-0002"
+    assert first_ticket is not None and first_ticket.status is TicketStatus.ABANDONED
+    assert second_ticket is not None and second_ticket.status is TicketStatus.SUBMITTED
+    assert channels[9001].deleted is True
 
 
 @pytest.mark.asyncio

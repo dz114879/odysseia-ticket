@@ -114,7 +114,9 @@ Important behavior:
 
 - queue promotion is FIFO per guild
 - temporary Discord resolution failures defer promotion
-- missing channel or missing creator can cause the queued ticket to be abandoned
+- missing channel can cause the queued ticket to be abandoned immediately
+- missing creator abandons the queued ticket only after orphaned-channel deletion succeeds
+- if orphaned-channel deletion fails, the ticket stays queued and later queue sweeps retry cleanup
 
 Useful guild-log titles:
 

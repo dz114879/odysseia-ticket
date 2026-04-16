@@ -43,7 +43,7 @@ All of these dataclasses are `frozen=True`; repositories return typed records, n
 
 | Repository | Owns | Main Responsibilities | Important Notes |
 |-----------|------|-----------------------|-----------------|
-| `TicketRepository` | `tickets` | create/update/get/list lifecycle rows, due close/transfer lookup, queue ordering lookup | accepts `connection=` for multi-step service transactions and persists message identity fields such as `welcome_message_id` / `staff_panel_message_id` |
+| `TicketRepository` | `tickets` | create/update/get/list lifecycle rows, due close/transfer lookup, queue ordering lookup, lightweight count/position aggregation | accepts `connection=` for multi-step service transactions and persists message identity fields such as `welcome_message_id` / `staff_panel_message_id` |
 | `TicketMuteRepository` | `ticket_mutes` | upsert, expire sweep lookup, delete | composite primary key is `(ticket_id, user_id)` |
 | `GuildRepository` | `guild_configs`, `ticket_categories` | config upsert/update, category replace/list/get | one repo owns both guild-level and category-level config surfaces |
 | `PanelRepository` | `panels` | replace active panel, active panel lookup, list restore candidates | one active panel per guild is enforced both in code and by a partial unique index |
@@ -66,8 +66,9 @@ The `schema_version` table is infrastructure metadata owned by `db/migrations.py
 Additional indexes worth keeping explicit:
 
 - `tickets(guild_id, status)` supports lifecycle/status sweeps
+- `tickets(guild_id, status)` also supports SQL-side active-capacity counts
 - `tickets(close_execute_at)` supports due-close lookup
-- `tickets(guild_id, queued_at, created_at, ticket_id)` supports queue promotion order
+- `tickets(guild_id, queued_at, created_at, ticket_id)` supports queue promotion order and SQL-side queue-position lookup
 - `panels(message_id)` supports message-scoped view restore
 
 ## File-Backed Artifacts

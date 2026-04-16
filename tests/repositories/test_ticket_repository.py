@@ -215,6 +215,54 @@ def test_list_queued_by_guild_orders_by_queued_at_then_created_at(repository: Ti
     assert [record.ticket_id for record in queued] == ["ticket-queued-1", "ticket-queued-2"]
 
 
+def test_count_by_guild_statuses_supports_status_filter_and_exclude_ticket_id(repository: TicketRepository) -> None:
+    repository.create(make_ticket("ticket-submitted-1", status=TicketStatus.SUBMITTED))
+    repository.create(make_ticket("ticket-submitted-2", status=TicketStatus.SUBMITTED, created_at="2024-01-01T00:01:00+00:00"))
+    repository.create(make_ticket("ticket-closing", status=TicketStatus.CLOSING, created_at="2024-01-01T00:02:00+00:00"))
+    repository.create(make_ticket("ticket-queued", status=TicketStatus.QUEUED, created_at="2024-01-01T00:03:00+00:00"))
+    repository.create(make_ticket("ticket-other-guild", guild_id=2, status=TicketStatus.SUBMITTED))
+
+    counted = repository.count_by_guild_statuses(
+        1,
+        statuses=[TicketStatus.SUBMITTED, TicketStatus.CLOSING],
+    )
+    excluded = repository.count_by_guild_statuses(
+        1,
+        statuses=[TicketStatus.SUBMITTED, TicketStatus.CLOSING],
+        exclude_ticket_id="ticket-submitted-2",
+    )
+
+    assert counted == 3
+    assert excluded == 2
+
+
+def test_get_queue_position_uses_fifo_ordering_in_sql(repository: TicketRepository) -> None:
+    repository.create(
+        make_ticket(
+            "ticket-queued-2",
+            status=TicketStatus.QUEUED,
+            created_at="2024-01-01T00:01:00+00:00",
+            updated_at="2024-01-01T00:01:00+00:00",
+            queued_at="2024-01-01T00:05:00+00:00",
+        )
+    )
+    repository.create(
+        make_ticket(
+            "ticket-queued-1",
+            status=TicketStatus.QUEUED,
+            created_at="2024-01-01T00:00:00+00:00",
+            updated_at="2024-01-01T00:00:00+00:00",
+            queued_at="2024-01-01T00:05:00+00:00",
+        )
+    )
+    repository.create(make_ticket("ticket-not-queued", status=TicketStatus.SUBMITTED))
+
+    assert repository.get_queue_position("ticket-queued-1") == 1
+    assert repository.get_queue_position("ticket-queued-2") == 2
+    assert repository.get_queue_position("ticket-not-queued") is None
+    assert repository.get_queue_position("ticket-missing") is None
+
+
 def test_list_due_transfer_executions_returns_only_due_transferring_tickets(
     repository: TicketRepository,
 ) -> None:

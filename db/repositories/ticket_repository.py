@@ -387,6 +387,30 @@ class TicketRepository(BaseRepository):
             rows = current_connection.execute(query, parameters).fetchall()
         return [self._row_to_record(row) for row in rows]
 
+    def count_by_guild_statuses(
+        self,
+        guild_id: int,
+        *,
+        statuses: Sequence[TicketStatus],
+        exclude_ticket_id: str | None = None,
+        connection: sqlite3.Connection | None = None,
+    ) -> int:
+        if not statuses:
+            return 0
+
+        placeholders = ", ".join("?" for _ in statuses)
+        clauses = ["guild_id = ?", f"status IN ({placeholders})"]
+        parameters: list[object] = [guild_id, *(status.value for status in statuses)]
+
+        if exclude_ticket_id is not None:
+            clauses.append("ticket_id != ?")
+            parameters.append(exclude_ticket_id)
+
+        query = f"SELECT COUNT(*) AS total FROM tickets WHERE {' AND '.join(clauses)};"
+        with self.read_connection(connection) as current_connection:
+            row = current_connection.execute(query, parameters).fetchone()
+        return int(row["total"]) if row is not None else 0
+
     def list_due_transfer_executions(
         self,
         execute_before: str,
@@ -435,6 +459,49 @@ class TicketRepository(BaseRepository):
         with self.read_connection(connection) as current_connection:
             rows = current_connection.execute(query, (guild_id, TicketStatus.QUEUED.value)).fetchall()
         return [self._row_to_record(row) for row in rows]
+
+    def get_queue_position(
+        self,
+        ticket_id: str,
+        *,
+        connection: sqlite3.Connection | None = None,
+    ) -> int | None:
+        query = """
+            WITH target AS (
+                SELECT
+                    guild_id,
+                    COALESCE(queued_at, created_at) AS queue_order_at,
+                    created_at,
+                    ticket_id
+                FROM tickets
+                WHERE ticket_id = ? AND status = ?
+            )
+            SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM target) THEN (
+                    SELECT COUNT(*)
+                    FROM tickets AS queued, target
+                    WHERE queued.guild_id = target.guild_id
+                      AND queued.status = ?
+                      AND (
+                          COALESCE(queued.queued_at, queued.created_at) < target.queue_order_at
+                          OR (
+                              COALESCE(queued.queued_at, queued.created_at) = target.queue_order_at
+                              AND (
+                                  queued.created_at < target.created_at
+                                  OR (queued.created_at = target.created_at AND queued.ticket_id <= target.ticket_id)
+                              )
+                          )
+                      )
+                )
+                ELSE NULL
+            END AS position;
+        """
+        with self.read_connection(connection) as current_connection:
+            row = current_connection.execute(
+                query,
+                (ticket_id, TicketStatus.QUEUED.value, TicketStatus.QUEUED.value),
+            ).fetchone()
+        return int(row["position"]) if row is not None and row["position"] is not None else None
 
     def update(
         self,

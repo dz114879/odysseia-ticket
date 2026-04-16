@@ -82,6 +82,7 @@ Current control flow:
   - `closing`
   - `archiving`
   - `archive_sent`
+- The active-count snapshot is resolved by `TicketRepository.count_by_guild_statuses(...)` with a SQL `COUNT(*)`, not by hydrating full ticket rows first.
 - `draft`, `queued`, `sleep`, `archive_failed`, `channel_deleted`, `done`, and `abandoned` do not consume active capacity.
 - A sleep ticket does not reserve capacity. Waking it later must still pass a fresh capacity check.
 
@@ -91,6 +92,7 @@ Current control flow:
   - `COALESCE(queued_at, created_at) ASC`
   - then `created_at ASC`
   - then `ticket_id ASC`
+- `QueueService.get_queue_position()` resolves the numeric position through `TicketRepository.get_queue_position(...)` in SQL using that same ordering, instead of loading the full queue into Python.
 - Neither priority nor claim state changes queue order.
 - Queue position exists only while `status=queued`.
 
@@ -99,7 +101,9 @@ Current control flow:
 - Promotion happens one ticket at a time per guild per `process_next_queued_ticket()` call.
 - If the first queued ticket has a permanent problem:
   - missing channel -> mark `abandoned`, continue scanning
-  - missing creator -> try deleting the channel, mark `abandoned`, continue scanning
+  - missing creator -> try deleting the orphaned channel first
+  - only after channel deletion succeeds may the ticket become `abandoned` and scanning continue
+  - if orphaned-channel deletion fails, keep the ticket `queued` and stop promotion for now so a later queue sweep can retry cleanup without breaking FIFO
 - If the first queued ticket has a temporary resolution problem:
   - channel fetch failure -> defer promotion for now
   - creator fetch failure -> defer promotion for now
