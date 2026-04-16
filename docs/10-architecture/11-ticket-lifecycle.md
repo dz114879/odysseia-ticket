@@ -46,7 +46,7 @@ All persisted lifecycle states come from `core/enums.py:TicketStatus` and are st
 |-------|------------|-----------|--------------------------|-------|
 | `draft` | `CreationService.create_draft_ticket()` | `SubmitService.submit_draft_ticket()`, `DraftService.abandon_draft_ticket()`, `DraftTimeoutService._apply_timeout_if_needed()` | `channel_id`, `has_user_message`, `last_user_message_at` | Creator-only pre-submit state. |
 | `queued` | `SubmitService._enqueue_ticket()`, `QueueService.enqueue_ticket()` | `SubmitService.promote_queued_ticket()`, `QueueService._mark_abandoned()` | `queued_at` | Staff still stay hidden; does not consume active capacity. |
-| `submitted` | `SubmitService._execute_submission()`, `SleepService.wake_ticket()`, `TransferService.cancel_transfer()`, `TransferService._execute_due_transfer()`, `CloseService.revoke_close()` | `SleepService.sleep_ticket()`, `TransferService.transfer_ticket()`, `CloseService.initiate_close()` | `staff_panel_message_id`, `claimed_by`, `priority`, `snapshot_bootstrapped_at` | Main active working state. |
+| `submitted` | `SubmitService.submit_draft_ticket()`, `SubmitService.promote_queued_ticket()`, `SleepService.wake_ticket()`, `TransferService.cancel_transfer()`, `TransferService._execute_due_transfer()`, `CloseService.revoke_close()` | `SleepService.sleep_ticket()`, `TransferService.transfer_ticket()`, `CloseService.initiate_close()` | `staff_panel_message_id`, `claimed_by`, `priority`, `snapshot_bootstrapped_at` | Main active working state. Re-entering submit while already `submitted` may reconcile missing side effects without changing `tickets.status`. |
 | `sleep` | `SleepService.sleep_ticket()`, `TransferService.cancel_transfer()`, `TransferService._execute_due_transfer()`, `CloseService.revoke_close()` | `SleepService.wake_ticket()`, `TransferService.transfer_ticket()`, `CloseService.initiate_close()` | `priority=TicketPriority.SLEEP`, `priority_before_sleep` | Inactive from the capacity model. |
 | `transferring` | `TransferService.transfer_ticket()` | `TransferService.cancel_transfer()`, `TransferService._execute_due_transfer()` | `status_before`, `transfer_target_category`, `transfer_initiated_by`, `transfer_reason`, `transfer_execute_at`, `transfer_history_json` | Category has not changed yet; delayed execution pending. |
 | `closing` | `CloseService.initiate_close()` | `CloseService.revoke_close()`, `ArchiveService._advance_closing_to_archiving_if_due()` | `status_before`, `close_reason`, `close_initiated_by`, `close_execute_at`, `closed_at` | Read-only revoke window before archive starts. |
@@ -61,8 +61,8 @@ All persisted lifecycle states come from `core/enums.py:TicketStatus` and are st
 
 | Transition | Owning Service | Guards | Important Side Effects |
 |------------|----------------|--------|------------------------|
-| `draft` -> `submitted` | `SubmitService` | `SubmissionGuardService.inspect_submission()`, `CapacityService.build_snapshot()` | rename channel if needed, grant current-category staff access, bootstrap snapshots, send divider, send staff panel, clear welcome view |
-| `draft` -> `queued` | `SubmitService` | `SubmissionGuardService.inspect_submission()`, no capacity available | rename channel if needed, set `queued_at`, keep staff hidden, clear welcome view |
+| `draft` -> `submitted` | `SubmitService` | `SubmissionGuardService.inspect_submission()`, `CapacityService.build_snapshot()` | commit `status=submitted` first, then rename channel if needed, grant current-category staff access, bootstrap snapshots, send divider, ensure a staff panel exists, clear welcome view |
+| `draft` -> `queued` | `SubmitService` | `SubmissionGuardService.inspect_submission()`, no capacity available | commit `status=queued` and `queued_at` first, then rename channel if needed, keep staff hidden, clear welcome view |
 | `draft` -> `abandoned` | `DraftService`, `DraftTimeoutService` | creator-only or timeout check | delete channel; roll back to `draft` if delete fails |
 | `queued` -> `submitted` | `QueueService` -> `SubmitService.promote_queued_ticket()` | channel and creator must still resolve, `SubmissionGuardService.inspect_queued_promotion()`, capacity available | same side effects as normal submit, but divider text indicates auto-promotion |
 | `queued` -> `abandoned` | `QueueService` | permanent missing channel or creator | optionally delete orphaned channel, clear `queued_at`, continue scanning later queued tickets |
@@ -88,6 +88,7 @@ All persisted lifecycle states come from `core/enums.py:TicketStatus` and are st
 - `status_before` is rollback metadata, not a second source of truth. It is meaningful only while a ticket is `transferring` or `closing`.
 - Queue filling should happen when capacity is released, not on unrelated ticket mutations.
 - Permission changes must stay aligned with lifecycle transitions. In particular, queued tickets must not silently gain staff visibility.
+- Submit and queued-promotion lifecycle commits happen before Discord-side effects; missing submitted-side effects are repaired by later reconciliation instead of undoing the committed status.
 - The archive pipeline must be idempotent enough for bootstrap recovery, scheduled recovery sweeps, and channel-delete recovery to resume partially completed flows.
 - `abandoned` and `done` are terminal in the current design. There is no built-in reopen path.
 

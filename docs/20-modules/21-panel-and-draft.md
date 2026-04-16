@@ -153,7 +153,8 @@ Draft-timeout behavior is split between message events and sweeps:
 Important user-facing rule:
 
 - draft messages are not live-captured by the snapshot system
-- snapshot bootstrap happens only once the ticket first becomes `submitted`
+- snapshot bootstrap starts only after the ticket reaches `submitted`
+- if the first submitted-side bootstrap fails after status commit, later submit reconciliation may retry it idempotently
 
 ## Failure Modes
 

@@ -48,14 +48,16 @@ Out of scope:
 
 Snapshot capture has two phases.
 
-### Phase 1: bootstrap on first entry into `submitted`
+### Phase 1: bootstrap after the ticket reaches `submitted`
 
-`SubmitService._execute_submission()` calls `SnapshotService.bootstrap_from_channel_history()` when a ticket first becomes `submitted`.
+`SubmitService` calls `SnapshotService.bootstrap_from_channel_history()` after the `submitted` state has already been committed.
 
 This happens for both:
 
 - direct draft submission
 - queued ticket promotion into `submitted`
+
+If a ticket is already `submitted` but its submit-side initialization was left incomplete, a later re-submit can trigger the same bootstrap path again. `SnapshotService` remains idempotent and skips work once `snapshot_bootstrapped_at` is already set.
 
 Bootstrap behavior:
 
@@ -71,6 +73,7 @@ Important implication:
 
 - draft and queued messages are not live-captured while the ticket is still `draft` or `queued`
 - if the ticket later reaches `submitted`, those existing non-bot messages are bootstrapped into snapshots retroactively
+- if that first bootstrap attempt fails after the `submitted` commit, a later submitted-path reconciliation can retry it
 
 ### Phase 2: live capture after bootstrap
 

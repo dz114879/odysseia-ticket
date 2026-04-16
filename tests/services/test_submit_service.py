@@ -79,13 +79,19 @@ class FakeChannel:
         self.pinned_messages: list[FakeMessage] = []
         self.edit_calls: list[dict] = []
         self.permission_calls: list[dict] = []
+        self.edit_errors: list[Exception] = []
+        self.send_errors: list[Exception] = []
 
     async def edit(self, *, name=None, reason=None, **kwargs) -> None:
+        if self.edit_errors:
+            raise self.edit_errors.pop(0)
         if name is not None:
             self.name = name
         self.edit_calls.append({"name": name, "reason": reason})
 
     async def send(self, *, content=None, embed=None, view=None) -> FakeMessage:
+        if self.send_errors:
+            raise self.send_errors.pop(0)
         message = FakeMessage(
             self.next_message_id,
             content=content,
@@ -110,11 +116,14 @@ class FakeChannel:
 
 
 class FakeSnapshotService:
-    def __init__(self) -> None:
+    def __init__(self, *, bootstrap_errors: list[Exception] | None = None) -> None:
         self.calls: list[dict[str, object]] = []
+        self.bootstrap_errors = list(bootstrap_errors or [])
 
     async def bootstrap_from_channel_history(self, ticket: TicketRecord, channel: FakeChannel) -> SnapshotBootstrapResult:
         self.calls.append({"ticket": ticket, "channel": channel})
+        if self.bootstrap_errors:
+            raise self.bootstrap_errors.pop(0)
         bootstrapped_ticket = (
             TicketRepository(self.database).update(
                 ticket.ticket_id,
@@ -345,11 +354,98 @@ async def test_submit_draft_ticket_is_idempotent_for_already_submitted_ticket(
     assert result.outcome == "already_submitted"
     assert result.channel_name_changed is False
     assert result.divider_message is None
-    assert result.staff_panel_message is None
+    assert result.staff_panel_message is channel.sent_messages[0]
     assert result.welcome_message_updated is True
     assert stored is not None
     assert stored.status is TicketStatus.SUBMITTED
-    assert not channel.sent_messages
+    assert stored.staff_panel_message_id == result.staff_panel_message.id
+    assert {call["target"].id for call in channel.permission_calls} == {400, 500, 301}
+
+
+@pytest.mark.asyncio
+async def test_submit_draft_ticket_recovers_missing_submitted_side_effects_after_post_commit_failure(prepared_submit_context) -> None:
+    database = prepared_submit_context["database"]
+    channel = prepared_submit_context["channel"]
+    creator = prepared_submit_context["creator"]
+    welcome_message = prepared_submit_context["welcome_message"]
+    ticket = prepared_submit_context["ticket"]
+    failing_snapshot_service = FakeSnapshotService(bootstrap_errors=[RuntimeError("bootstrap failed")])
+    failing_snapshot_service.database = database
+    service = SubmitService(database, snapshot_service=failing_snapshot_service)
+
+    with pytest.raises(RuntimeError, match="bootstrap failed"):
+        await service.submit_draft_ticket(
+            channel,
+            actor_id=creator.id,
+            requested_title="Login fails badly",
+            welcome_message=welcome_message,
+        )
+
+    stored_after_failure = TicketRepository(database).get_by_ticket_id(ticket.ticket_id)
+
+    assert stored_after_failure is not None
+    assert stored_after_failure.status is TicketStatus.SUBMITTED
+    assert stored_after_failure.staff_panel_message_id is None
+    assert stored_after_failure.snapshot_bootstrapped_at is None
+    assert welcome_message.view is not None
+
+    recovering_snapshot_service = FakeSnapshotService()
+    recovering_snapshot_service.database = database
+    recovering_service = SubmitService(database, snapshot_service=recovering_snapshot_service)
+
+    result = await recovering_service.submit_draft_ticket(
+        channel,
+        actor_id=creator.id,
+        welcome_message=welcome_message,
+    )
+    stored_after_retry = TicketRepository(database).get_by_ticket_id(ticket.ticket_id)
+
+    assert result.outcome == "already_submitted"
+    assert len(recovering_snapshot_service.calls) == 1
+    assert result.staff_panel_message is channel.sent_messages[0]
+    assert result.welcome_message_updated is True
+    assert stored_after_retry is not None
+    assert stored_after_retry.snapshot_bootstrapped_at == "2024-01-01T01:10:00+00:00"
+    assert stored_after_retry.staff_panel_message_id == result.staff_panel_message.id
+    assert welcome_message.view is None
+
+
+@pytest.mark.asyncio
+async def test_submit_draft_ticket_keeps_committed_queue_state_when_post_commit_queue_side_effect_fails(prepared_submit_context) -> None:
+    database = prepared_submit_context["database"]
+    channel = prepared_submit_context["channel"]
+    creator = prepared_submit_context["creator"]
+    welcome_message = prepared_submit_context["welcome_message"]
+    ticket_repository = prepared_submit_context["ticket_repository"]
+    GuildRepository(database).update_config(1, max_open_tickets=1)
+    ticket_repository.create(
+        TicketRecord(
+            ticket_id="1-support-0002",
+            guild_id=1,
+            creator_id=999,
+            category_key="support",
+            channel_id=9002,
+            status=TicketStatus.SUBMITTED,
+            created_at="2024-01-01T00:05:00+00:00",
+            updated_at="2024-01-01T00:05:00+00:00",
+        )
+    )
+    channel.edit_errors.append(RuntimeError("queue rename failed"))
+    service = SubmitService(database, capacity_service=CapacityService(database), queue_service=QueueService(database))
+
+    with pytest.raises(RuntimeError, match="queue rename failed"):
+        await service.submit_draft_ticket(
+            channel,
+            actor_id=creator.id,
+            requested_title="Need queue now",
+            welcome_message=welcome_message,
+        )
+
+    stored_after_failure = ticket_repository.get_by_ticket_id(prepared_submit_context["ticket"].ticket_id)
+    assert stored_after_failure is not None
+    assert stored_after_failure.status is TicketStatus.QUEUED
+    assert stored_after_failure.queued_at is not None
+    assert welcome_message.view is not None
 
 
 @pytest.mark.asyncio
