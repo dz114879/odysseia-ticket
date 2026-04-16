@@ -31,6 +31,8 @@ Out of scope:
 - `discord_ui/draft_views.py`
 - `services/submission_guard_service.py`
 - `services/submit_service.py`
+- `services/submit_side_effects.py`
+- `services/submit_welcome_service.py`
 - `services/queue_service.py`
 - `services/capacity_service.py`
 - `db/repositories/ticket_repository.py`
@@ -51,9 +53,9 @@ Current control flow:
    - `already_queued`: keep `status=queued` and return the current queue position.
    - `draft` with no capacity: persist `status=queued` and `queued_at` before any Discord-side changes.
    - `draft` with capacity: persist `status=submitted` and clear `queued_at` before any Discord-side changes.
-6. After the transaction commits and the guild lock is released, the service runs post-commit side effects from that plan:
-   - queued path: rename if needed, remove the welcome view by stored `welcome_message_id`, keep staff hidden.
-   - submitted path: rename if needed, grant staff access, bootstrap snapshots, send the divider for fresh submit/promotion, ensure a staff panel exists, remove the welcome view by stored `welcome_message_id`.
+6. After the transaction commits and the guild lock is released, `SubmitService` delegates post-commit side effects to its helper collaborators:
+   - queued path: `SubmitSideEffectsService` handles rename-if-needed; `SubmitWelcomeService` resolves the persisted welcome message and removes the welcome view; staff stay hidden.
+   - submitted path: `SubmitSideEffectsService` handles rename, staff access grant, divider send, and staff panel creation; `SnapshotService` bootstraps history; `SubmitWelcomeService` resolves the persisted welcome message and removes the welcome view.
    - `already_submitted` path: re-run submitted-side reconciliation so missing permission sync, snapshot bootstrap, staff panel creation, or welcome-view cleanup can be repaired.
 7. `QueueService.process_next_queued_ticket()` later reuses `SubmitService.promote_queued_ticket()` to turn `queued` into `submitted` when capacity becomes available.
 

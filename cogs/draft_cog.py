@@ -14,6 +14,7 @@ from core.errors import (
     ValidationError,
 )
 from discord_ui.draft_views import DraftAbandonConfirmView
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_message, send_ephemeral_text
 from services.draft_service import DraftRenameResult, DraftService
 
 
@@ -60,6 +61,7 @@ class DraftCog(commands.Cog):
     ) -> None:
         try:
             channel = self._require_editable_channel(interaction)
+            await safe_defer(interaction)
             result = await self.draft_service.rename_draft_ticket(
                 channel,
                 actor_id=interaction.user.id,
@@ -72,7 +74,7 @@ class DraftCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -82,20 +84,20 @@ class DraftCog(commands.Cog):
             result.new_name,
             result.changed,
         )
-        await self._send_ephemeral(interaction, self._build_rename_success_message(result))
+        await send_ephemeral_text(interaction, self._build_rename_success_message(result))
 
     async def abandon_current_draft(
         self,
         interaction: discord.Interaction,
     ) -> None:
         if interaction.guild is None or interaction.channel is None:
-            await self._send_ephemeral(interaction, "该命令只能在服务器频道中使用。")
+            await send_ephemeral_text(interaction, "该命令只能在服务器频道中使用。")
             return
 
         view = DraftAbandonConfirmView()
-        await self._send_ephemeral(
+        await send_ephemeral_message(
             interaction,
-            "⚠️ 警告：此操作会废弃当前 draft ticket ，并永久删除当前频道，无法撤销。\n\n 请确认。",
+            content="⚠️ 警告：此操作会废弃当前 draft ticket ，并永久删除当前频道，无法撤销。\n\n 请确认。",
             view=view,
         )
 
@@ -113,17 +115,6 @@ class DraftCog(commands.Cog):
         if not result.changed:
             return f"draft 标题未变化。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 当前频道名：`{result.new_name}`"
         return f"draft 标题已更新。\n- Ticket ID：`{result.ticket.ticket_id}`\n- 旧频道名：`{result.old_name}`\n- 新频道名：`{result.new_name}`"
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str, *, view: discord.ui.View | None = None) -> None:
-        kwargs: dict[str, Any] = {"ephemeral": True}
-        if view is not None:
-            kwargs["view"] = view
-        if interaction.response.is_done():
-            await interaction.followup.send(content, **kwargs)
-            return
-        await interaction.response.send_message(content, **kwargs)
-
 
 async def setup(bot: commands.Bot) -> None:
     try:

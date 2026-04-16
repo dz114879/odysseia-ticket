@@ -15,44 +15,18 @@ from discord_ui.config_views import (
     SnapshotTextModal,
     TextGroupSelect,
 )
+from tests.helpers.discord_fakes import FakeClient, FakeInteraction
 
 
-class FakeResponse:
-    def __init__(self) -> None:
-        self.messages: list[dict[str, object]] = []
-        self.deferred: list[dict[str, object]] = []
-        self._done = False
-
-    def is_done(self) -> bool:
-        return self._done
-
-    async def send_message(self, content: str | None = None, *, embed=None, view=None, ephemeral: bool = False) -> None:
-        self._done = True
-        self.messages.append({"content": content, "embed": embed, "view": view, "ephemeral": ephemeral})
-
-    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
-        self._done = True
-        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
-
-
-class FakeFollowup:
-    def __init__(self) -> None:
-        self.messages: list[dict[str, object]] = []
-
-    async def send(self, content: str | None = None, *, embed=None, view=None, ephemeral: bool = False) -> None:
-        self.messages.append({"content": content, "embed": embed, "view": view, "ephemeral": ephemeral})
-
-
-class FakeClient:
-    def __init__(self, migrated_database) -> None:
-        self.resources = SimpleNamespace(database=migrated_database, logging_service=SimpleNamespace())
-
-
-class FakeInteraction:
-    def __init__(self, migrated_database) -> None:
-        self.client = FakeClient(migrated_database)
-        self.response = FakeResponse()
-        self.followup = FakeFollowup()
+def build_interaction(migrated_database) -> FakeInteraction:
+    return FakeInteraction(
+        client=FakeClient(
+            resources=SimpleNamespace(
+                database=migrated_database,
+                logging_service=SimpleNamespace(),
+            )
+        )
+    )
 
 
 def seed_config(migrated_database, **overrides) -> GuildConfigRecord:
@@ -121,7 +95,7 @@ async def test_panel_text_modal_direct_save_canonicalizes_legacy_fields(migrated
     modal.title_input._value = modal.title_input.default or ""
     modal.body_input._value = modal.body_input.default or ""
     modal.footer_input._value = modal.footer_input.default or ""
-    interaction = FakeInteraction(migrated_database)
+    interaction = build_interaction(migrated_database)
 
     await modal.on_submit(interaction)
 
@@ -145,7 +119,7 @@ async def test_draft_welcome_modal_prefills_runtime_default_and_direct_save_is_n
     )
     modal = DraftWelcomeTextModal(guild_id=1, config=config)
     modal.welcome_input._value = modal.welcome_input.default or ""
-    interaction = FakeInteraction(migrated_database)
+    interaction = build_interaction(migrated_database)
 
     await modal.on_submit(interaction)
 
@@ -169,7 +143,7 @@ async def test_snapshot_text_modal_prefills_runtime_defaults_and_direct_save_is_
     modal = SnapshotTextModal(guild_id=1, config=config)
     modal.warning_input._value = modal.warning_input.default or ""
     modal.limit_input._value = modal.limit_input.default or ""
-    interaction = FakeInteraction(migrated_database)
+    interaction = build_interaction(migrated_database)
 
     await modal.on_submit(interaction)
 

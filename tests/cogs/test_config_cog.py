@@ -24,9 +24,12 @@ class FakeResponse:
         self._done = True
         self.messages.append({"content": content, "embed": embed, "view": view, "ephemeral": ephemeral})
 
-    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
+    async def defer(self, *, ephemeral: bool, thinking: bool | None = None) -> None:
         self._done = True
-        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
+        payload = {"ephemeral": ephemeral}
+        if thinking is not None:
+            payload["thinking"] = thinking
+        self.deferred.append(payload)
 
 
 class FakeFollowup:

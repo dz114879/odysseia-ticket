@@ -10,6 +10,7 @@ from discord.ext import commands
 
 from cogs.ticket_command_groups import ticket_group
 from core.errors import PermissionDeniedError, ValidationError
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.guild_config_service import GuildConfigService
 from services.panel_service import PanelService
 from services.permission_config_service import PermissionConfigService
@@ -47,7 +48,7 @@ class PermissionCog(commands.Cog):
         await self.run_permission_help(interaction)
 
     async def run_permission(self, interaction: discord.Interaction, *, file: Any) -> None:
-        await self._defer_ephemeral(interaction)
+        await safe_defer(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_permission(interaction)
@@ -71,7 +72,7 @@ class PermissionCog(commands.Cog):
 
             result = self.permission_config_service.apply_permission_config(guild.id, data)
         except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         summary = "\n".join(result.summary_lines) if result.summary_lines else "无变更"
@@ -97,10 +98,10 @@ class PermissionCog(commands.Cog):
         except Exception:
             pass
 
-        await self._send_ephemeral(interaction, response)
+        await send_ephemeral_text(interaction, response)
 
     async def run_permission_help(self, interaction: discord.Interaction) -> None:
-        await self._defer_ephemeral(interaction)
+        await safe_defer(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_permission(interaction)
@@ -112,7 +113,7 @@ class PermissionCog(commands.Cog):
             categories = self.guild_config_service.list_categories(guild.id)
             help_text = PermissionConfigService.build_permission_help_text(config, categories)
         except (PermissionDeniedError, ValidationError) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         file = discord.File(
@@ -149,20 +150,6 @@ class PermissionCog(commands.Cog):
         if interaction.guild is None:
             raise ValidationError("该命令只能在服务器中使用。")
         return interaction.guild
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(PermissionCog(bot))

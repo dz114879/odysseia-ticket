@@ -18,6 +18,7 @@ from discord_ui.close_feedback import (
     build_close_request_feedback_message,
     build_revoke_close_feedback_message,
 )
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.close_request_service import CloseRequestService
 from services.close_service import CloseService
 
@@ -67,7 +68,7 @@ class CloseCog(commands.Cog):
     ) -> None:
         try:
             channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             try:
                 result = await self.close_service.initiate_close(
                     channel,
@@ -92,7 +93,7 @@ class CloseCog(commands.Cog):
                     result.previous_status.value,
                     result.changed,
                 )
-                await self._send_ephemeral(interaction, build_close_feedback_message(result))
+                await send_ephemeral_text(interaction, build_close_feedback_message(result))
                 return
         except (
             TicketNotFoundError,
@@ -101,7 +102,7 @@ class CloseCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -110,12 +111,12 @@ class CloseCog(commands.Cog):
             request_result.requested_by_id,
             request_result.replaced_message_id,
         )
-        await self._send_ephemeral(interaction, build_close_request_feedback_message(request_result))
+        await send_ephemeral_text(interaction, build_close_request_feedback_message(request_result))
 
     async def revoke_current_ticket_close(self, interaction: discord.Interaction) -> None:
         try:
             channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await self.close_service.revoke_close(
                 channel,
                 actor=interaction.user,
@@ -128,7 +129,7 @@ class CloseCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -136,7 +137,7 @@ class CloseCog(commands.Cog):
             result.ticket.ticket_id,
             result.restored_status.value,
         )
-        await self._send_ephemeral(interaction, build_revoke_close_feedback_message(result))
+        await send_ephemeral_text(interaction, build_revoke_close_feedback_message(result))
 
     @staticmethod
     def _require_ticket_channel(interaction: discord.Interaction) -> Any:
@@ -146,20 +147,6 @@ class CloseCog(commands.Cog):
         if channel is None or getattr(channel, "guild", None) is None:
             raise ValidationError("当前频道不支持 ticket close 操作。")
         return channel
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
 
 async def setup(bot: commands.Bot) -> None:
     try:

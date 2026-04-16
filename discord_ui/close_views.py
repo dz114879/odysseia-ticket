@@ -12,6 +12,7 @@ from core.errors import (
     ValidationError,
 )
 from discord_ui.close_feedback import build_close_feedback_message, build_revoke_close_feedback_message
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 
 
 class ClosingNoticeView(discord.ui.View):
@@ -48,7 +49,7 @@ class ClosingNoticeView(discord.ui.View):
         del button
         try:
             channel = _require_channel(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await self.close_service.revoke_close(
                 channel,
                 actor=interaction.user,
@@ -62,10 +63,10 @@ class ClosingNoticeView(discord.ui.View):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_revoke_close_feedback_message(result))
+        await send_ephemeral_text(interaction, build_revoke_close_feedback_message(result))
 
 
 class CloseRequestView(discord.ui.View):
@@ -107,7 +108,7 @@ class CloseRequestView(discord.ui.View):
         del button
         try:
             channel = _require_channel(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await self.service.approve_request(
                 channel,
                 actor=interaction.user,
@@ -124,10 +125,10 @@ class CloseRequestView(discord.ui.View):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_close_feedback_message(result))
+        await send_ephemeral_text(interaction, build_close_feedback_message(result))
 
     @discord.ui.button(label="❌ 拒绝", style=discord.ButtonStyle.secondary, row=0)
     async def reject_button(
@@ -138,7 +139,7 @@ class CloseRequestView(discord.ui.View):
         del button
         try:
             channel = _require_channel(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             await self.service.reject_request(
                 channel,
                 actor=interaction.user,
@@ -155,10 +156,10 @@ class CloseRequestView(discord.ui.View):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, "已拒绝该关闭请求，并在频道内发送公开说明。")
+        await send_ephemeral_text(interaction, "已拒绝该关闭请求，并在频道内发送公开说明。")
 
 
 def _require_channel(interaction: discord.Interaction) -> Any:
@@ -168,16 +169,3 @@ def _require_channel(interaction: discord.Interaction) -> Any:
     if channel is None or getattr(channel, "guild", None) is None:
         raise ValidationError("当前频道不支持 ticket close request 操作。")
     return channel
-
-
-async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-    if interaction.response.is_done():
-        await interaction.followup.send(content, ephemeral=True)
-        return
-    await interaction.response.send_message(content, ephemeral=True)
-
-
-async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-    if interaction.response.is_done():
-        return
-    await interaction.response.defer(ephemeral=True, thinking=True)

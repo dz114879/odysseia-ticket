@@ -9,16 +9,16 @@ from collections.abc import AsyncIterator
 
 from core.enums import TicketStatus
 from core.errors import ValidationError
-from core.models import GuildConfigRecord, TicketCategoryConfig, TicketRecord
+from core.models import TicketRecord
 from db.connection import DatabaseManager
 from db.repositories.base import utc_now_iso
 from db.repositories.ticket_repository import TicketRepository
-from discord_ui.panel_embeds import build_staff_control_panel_embed
-from discord_ui.staff_panel_view import StaffPanelView
 from runtime.locks import LockManager
 from services.capacity_service import CapacityService
 from services.draft_service import DraftService
 from services.snapshot_service import SnapshotService
+from services.submit_side_effects import SubmitSideEffectsService
+from services.submit_welcome_service import SubmitWelcomeService
 from services.staff_permission_service import StaffPermissionService
 from services.submission_guard_service import SubmissionContext, SubmissionGuardService
 
@@ -65,6 +65,8 @@ class SubmitService:
         snapshot_service: SnapshotService | None = None,
         capacity_service: CapacityService | None = None,
         queue_service: QueueService | None = None,
+        side_effects_service: SubmitSideEffectsService | None = None,
+        welcome_service: SubmitWelcomeService | None = None,
     ) -> None:
         self.database = database
         self.ticket_repository = ticket_repository or TicketRepository(database)
@@ -80,6 +82,11 @@ class SubmitService:
             ticket_repository=self.ticket_repository,
         )
         self.queue_service = queue_service
+        self.side_effects_service = side_effects_service or SubmitSideEffectsService(
+            ticket_repository=self.ticket_repository,
+            permission_service=self.permission_service,
+        )
+        self.welcome_service = welcome_service or SubmitWelcomeService()
         self.logger = logging.getLogger(__name__)
 
     async def submit_draft_ticket(
@@ -252,33 +259,33 @@ class SubmitService:
         welcome_message: Any | None,
     ) -> SubmitDraftResult:
         should_retry_rename = plan.outcome == "submitted" or requested_title is not None
-        new_channel_name = await self._rename_channel(
+        new_channel_name = await self.side_effects_service.rename_channel(
             channel=channel,
             current_name=old_channel_name,
             next_name=plan.target_channel_name,
             reason=(f"Promote queued ticket {plan.ticket.ticket_id}" if plan.from_queue else f"Submit draft ticket {plan.ticket.ticket_id}"),
             enabled=should_retry_rename,
         )
-        await self._grant_staff_access(channel=channel, config=plan.context.config, category=plan.context.category)
+        await self.side_effects_service.grant_staff_access(channel=channel, config=plan.context.config, category=plan.context.category)
         updated_ticket = plan.ticket
         if self.snapshot_service is not None:
             bootstrap_result = await self.snapshot_service.bootstrap_from_channel_history(updated_ticket, channel)
             updated_ticket = bootstrap_result.ticket
         divider_message = None
         if plan.outcome == "submitted":
-            divider_message = await self._send_submission_divider(channel, updated_ticket, from_queue=plan.from_queue)
-        updated_ticket, staff_panel_message = await self._ensure_staff_control_panel(
+            divider_message = await self.side_effects_service.send_submission_divider(channel, updated_ticket, from_queue=plan.from_queue)
+        updated_ticket, staff_panel_message = await self.side_effects_service.ensure_staff_control_panel(
             channel=channel,
             ticket=updated_ticket,
             category=plan.context.category,
             config=plan.context.config,
         )
-        resolved_welcome_message = await self._resolve_welcome_message(
+        resolved_welcome_message = await self.welcome_service.resolve_welcome_message(
             channel,
             ticket=updated_ticket,
             provided_message=welcome_message,
         )
-        welcome_message_updated = await self._remove_welcome_view(resolved_welcome_message)
+        welcome_message_updated = await self.welcome_service.remove_welcome_view(resolved_welcome_message)
         return SubmitDraftResult(
             ticket=updated_ticket,
             old_channel_name=old_channel_name,
@@ -299,19 +306,19 @@ class SubmitService:
         requested_title: str | None,
         welcome_message: Any | None,
     ) -> SubmitDraftResult:
-        new_channel_name = await self._rename_channel(
+        new_channel_name = await self.side_effects_service.rename_channel(
             channel=channel,
             current_name=old_channel_name,
             next_name=plan.target_channel_name,
             reason=f"Queue ticket {plan.ticket.ticket_id} after submit request",
             enabled=(plan.outcome == "queued" or requested_title is not None),
         )
-        resolved_welcome_message = await self._resolve_welcome_message(
+        resolved_welcome_message = await self.welcome_service.resolve_welcome_message(
             channel,
             ticket=plan.ticket,
             provided_message=welcome_message,
         )
-        welcome_message_updated = await self._remove_welcome_view(resolved_welcome_message)
+        welcome_message_updated = await self.welcome_service.remove_welcome_view(resolved_welcome_message)
         return SubmitDraftResult(
             ticket=plan.ticket,
             old_channel_name=old_channel_name,
@@ -326,36 +333,6 @@ class SubmitService:
             max_open_tickets=plan.max_open_tickets,
         )
 
-    async def _rename_channel(
-        self,
-        *,
-        channel: Any,
-        current_name: str,
-        next_name: str,
-        reason: str,
-        enabled: bool,
-    ) -> str:
-        if not enabled or next_name == current_name:
-            return current_name
-        await channel.edit(name=next_name, reason=reason)
-        return next_name
-
-    async def _ensure_staff_control_panel(
-        self,
-        *,
-        channel: Any,
-        ticket: TicketRecord,
-        category: TicketCategoryConfig,
-        config: GuildConfigRecord,
-    ) -> tuple[TicketRecord, Any | None]:
-        if ticket.staff_panel_message_id is not None:
-            return ticket, None
-        staff_panel_message = await self._send_staff_control_panel(channel, ticket=ticket, category=category, config=config)
-        if staff_panel_message is None:
-            return ticket, None
-        updated_ticket = self.ticket_repository.update(ticket.ticket_id, staff_panel_message_id=getattr(staff_panel_message, "id", None)) or ticket
-        return updated_ticket, staff_panel_message
-
     def _commit_submitted_ticket(
         self,
         ticket_id: str,
@@ -369,141 +346,6 @@ class SubmitService:
         if not requested_title:
             return channel_name
         return DraftService.build_renamed_channel_name(requested_name=requested_title)
-
-    async def _grant_staff_access(
-        self,
-        *,
-        channel: Any,
-        config: GuildConfigRecord,
-        category: TicketCategoryConfig,
-    ) -> None:
-        await self.permission_service.apply_ticket_permissions(
-            channel,
-            include_participants=False,
-            config=config,
-            category=category,
-            visible_reason=f"Open submitted ticket {getattr(channel, 'id', 'unknown')} to staff",
-        )
-
-    async def _send_submission_divider(
-        self,
-        channel: Any,
-        ticket: TicketRecord,
-        *,
-        from_queue: bool,
-    ) -> Any | None:
-        send = getattr(channel, "send", None)
-        if send is None:
-            return None
-        return await send(
-            content=(
-                "━━━━━━━━━━━━━━━━━━\n"
-                + (
-                    "✅ 您的 Ticket 已从排队中自动提交 ！\n\n相关管理员现在可以查看并处理。\n\n=== 草稿期分界线 ===\n"
-                    if from_queue
-                    else "✅ 您的 Ticket 已成功提交 ！\n\n请稍候，相关管理员会前来处理。\n\n在此期间，请勿重复提交相同主题的Ticket。感谢您的理解和支持。\n\n=== 草稿期分界线 ===\n"
-                )
-                + "━━━━━━━━━━━━━━━━━━"
-            )
-        )
-
-    async def _send_staff_control_panel(
-        self,
-        channel: Any,
-        *,
-        ticket: TicketRecord,
-        category: TicketCategoryConfig,
-        config: GuildConfigRecord,
-    ) -> Any | None:
-        send = getattr(channel, "send", None)
-        if send is None:
-            return None
-
-        return await send(
-            embed=build_staff_control_panel_embed(ticket, category=category, config=config),
-            view=StaffPanelView(),
-        )
-
-    async def _resolve_welcome_message(
-        self,
-        channel: Any,
-        *,
-        ticket: TicketRecord,
-        provided_message: Any | None,
-    ) -> Any | None:
-        stored_message_id = ticket.welcome_message_id
-        if provided_message is not None:
-            provided_message_id = getattr(provided_message, "id", None)
-            if stored_message_id is None or provided_message_id == stored_message_id:
-                return provided_message
-
-        if stored_message_id is not None:
-            resolved_message = await self._fetch_message_by_id(channel, stored_message_id)
-            if resolved_message is not None:
-                return resolved_message
-
-        return await self._resolve_legacy_welcome_message(channel, ticket=ticket)
-
-    @staticmethod
-    async def _fetch_message_by_id(channel: Any, message_id: int) -> Any | None:
-        fetch_message = getattr(channel, "fetch_message", None)
-        if not callable(fetch_message):
-            return None
-
-        try:
-            return await fetch_message(message_id)
-        except Exception:
-            return None
-
-    async def _resolve_legacy_welcome_message(self, channel: Any, *, ticket: TicketRecord) -> Any | None:
-        pins = getattr(channel, "pins", None)
-        if not callable(pins):
-            return None
-
-        try:
-            pinned_messages = await pins()
-        except Exception:
-            return None
-
-        for pinned_message in pinned_messages:
-            if self._is_legacy_welcome_message(pinned_message, ticket=ticket):
-                return pinned_message
-
-        return None
-
-    @staticmethod
-    def _is_legacy_welcome_message(message: Any, *, ticket: TicketRecord) -> bool:
-        content = str(getattr(message, "content", "") or "")
-        creator_mention = f"<@{ticket.creator_id}>"
-        creator_nick_mention = f"<@!{ticket.creator_id}>"
-        if creator_mention not in content and creator_nick_mention not in content and ticket.ticket_id not in content:
-            return False
-
-        embed_title = SubmitService._get_message_embed_title(message)
-        return embed_title.startswith("📋 已创建")
-
-    @staticmethod
-    def _get_message_embed_title(message: Any) -> str:
-        embed = getattr(message, "embed", None)
-        if embed is None:
-            embeds = getattr(message, "embeds", None) or []
-            embed = embeds[0] if embeds else None
-        return str(getattr(embed, "title", "") or "")
-
-    @staticmethod
-    async def _remove_welcome_view(message: Any | None) -> bool:
-        if message is None:
-            return False
-
-        edit = getattr(message, "edit", None)
-        if edit is None:
-            return False
-
-        try:
-            await edit(view=None)
-        except Exception:
-            return False
-        return True
 
     def _enqueue_ticket(
         self,

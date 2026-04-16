@@ -105,9 +105,12 @@ class FakeResponse:
         self._done = True
         self.messages.append({"content": content, "ephemeral": ephemeral})
 
-    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
+    async def defer(self, *, ephemeral: bool, thinking: bool | None = None) -> None:
         self._done = True
-        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
+        payload = {"ephemeral": ephemeral}
+        if thinking is not None:
+            payload["thinking"] = thinking
+        self.deferred.append(payload)
 
 
 class FakeFollowup:
@@ -228,7 +231,7 @@ def prepared_close_cog_context(migrated_database):
 
 
 def assert_deferred_followup(interaction: FakeInteraction) -> dict[str, object]:
-    assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert interaction.response.deferred == [{"ephemeral": True}]
     assert interaction.followup.messages
     assert interaction.followup.messages[0]["ephemeral"] is True
     return interaction.followup.messages[0]

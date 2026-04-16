@@ -112,8 +112,11 @@ class FakeResponse:
         self.messages.append({"content": content, "ephemeral": ephemeral})
         self._done = True
 
-    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
-        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
+    async def defer(self, *, ephemeral: bool, thinking: bool | None = None) -> None:
+        payload = {"ephemeral": ephemeral}
+        if thinking is not None:
+            payload["thinking"] = thinking
+        self.deferred.append(payload)
         self._done = True
 
     async def send_modal(self, modal) -> None:
@@ -298,7 +301,7 @@ async def test_submit_current_draft_submits_after_channel_has_custom_name(
 
     stored = TicketRepository(database).get_by_ticket_id(prepared_submit_cog_context["ticket"].ticket_id)
     welcome_message = prepared_submit_cog_context["welcome_message"]
-    assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert interaction.response.deferred == [{"ephemeral": True}]
     assert interaction.followup.messages
     assert "Ticket 已提交" in interaction.followup.messages[0]["content"]
     assert stored is not None

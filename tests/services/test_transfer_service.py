@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from types import SimpleNamespace
 
 import pytest
 
@@ -13,27 +11,7 @@ from db.repositories.guild_repository import GuildRepository
 from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.transfer_service import TransferService
-
-
-@dataclass(frozen=True)
-class FakeRole:
-    id: int
-
-
-@dataclass
-class FakeMember:
-    id: int
-    roles: list[FakeRole] = field(default_factory=list)
-    administrator: bool = False
-
-    @property
-    def guild_permissions(self) -> SimpleNamespace:
-        return SimpleNamespace(administrator=self.administrator)
-
-
-@dataclass
-class FakeMessage:
-    content: str
+from tests.helpers.discord_fakes import FakeGuild, FakeMember, FakeMessage, FakeRole
 
 
 class FakeChannel:
@@ -44,7 +22,7 @@ class FakeChannel:
         self.permission_calls: list[dict[str, object]] = []
 
     async def send(self, *, content: str | None = None, embed=None, view=None):
-        message = FakeMessage(content or "")
+        message = FakeMessage(content=content or "")
         self.sent_messages.append(message)
         return message
 
@@ -56,18 +34,6 @@ class FakeChannel:
                 "reason": reason,
             }
         )
-
-
-class FakeGuild:
-    def __init__(self, *, roles: list[FakeRole], members: list[FakeMember]) -> None:
-        self._roles = {role.id: role for role in roles}
-        self._members = {member.id: member for member in members}
-
-    def get_role(self, role_id: int):
-        return self._roles.get(role_id)
-
-    def get_member(self, member_id: int):
-        return self._members.get(member_id)
 
 
 class FakeBot:
@@ -159,7 +125,11 @@ def prepared_transfer_context(migrated_database):
     explicit_staff_member = FakeMember(302)
     billing_staff_member = FakeMember(303, roles=[billing_role])
     outsider = FakeMember(999)
-    guild = FakeGuild(roles=[admin_role, staff_role, billing_role], members=[staff_member, explicit_staff_member, billing_staff_member, outsider])
+    guild = FakeGuild(1)
+    for role in (admin_role, staff_role, billing_role):
+        guild.add_role(role)
+    for member in (staff_member, explicit_staff_member, billing_staff_member, outsider):
+        guild.add_member(member)
 
     ticket = ticket_repository.create(
         TicketRecord(

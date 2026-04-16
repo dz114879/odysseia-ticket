@@ -14,6 +14,7 @@ from core.errors import (
     ValidationError,
 )
 from discord_ui.draft_views import DraftSubmitTitleModal, DraftWelcomeView, build_submit_feedback_message
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.submission_guard_service import SubmissionGuardService
 from services.submit_service import SubmitService
 
@@ -59,7 +60,7 @@ class SubmitCog(commands.Cog):
                 await interaction.response.send_modal(DraftSubmitTitleModal())
                 return
 
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await self.submit_service.submit_draft_ticket(
                 channel,
                 actor_id=interaction.user.id,
@@ -71,7 +72,7 @@ class SubmitCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -80,7 +81,7 @@ class SubmitCog(commands.Cog):
             result.outcome,
             result.channel_name_changed,
         )
-        await self._send_ephemeral(interaction, build_submit_feedback_message(result))
+        await send_ephemeral_text(interaction, build_submit_feedback_message(result))
 
     @staticmethod
     def _require_channel(interaction: discord.Interaction) -> Any:
@@ -90,20 +91,6 @@ class SubmitCog(commands.Cog):
         if channel is None:
             raise ValidationError("无法识别当前 ticket 频道。")
         return channel
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
 
 async def setup(bot: commands.Bot) -> None:
     try:

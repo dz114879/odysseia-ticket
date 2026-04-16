@@ -59,11 +59,11 @@ Use this as the high-level ownership map:
 | Bootstrap and wiring | `services/bootstrap_service.py` |
 | Ticket creation and panel flow | `services/panel_service.py`, `discord_ui/public_panel_view.py`, `cogs/panel_cog.py` |
 | Draft workflow | `services/draft_service.py`, `discord_ui/draft_views.py`, `cogs/draft_cog.py` |
-| Submission and queueing | `services/submit_service.py`, `services/queue_service.py`, `services/capacity_service.py`, `cogs/submit_cog.py` |
+| Submission and queueing | `services/submit_service.py`, `services/submit_side_effects.py`, `services/submit_welcome_service.py`, `services/queue_service.py`, `services/capacity_service.py`, `cogs/submit_cog.py` |
 | Staff controls | `services/claim_service.py`, `services/sleep_service.py`, `services/rename_service.py`, `services/transfer_service.py`, `discord_ui/staff_panel_view.py`, `cogs/staff_cog.py` |
 | Close and archive | `services/close_service.py`, `services/close_request_service.py`, `services/archive_service.py`, `services/archive_render_service.py`, `services/archive_send_service.py` |
 | Snapshots and notes | `services/snapshot_service.py`, `services/snapshot_query_service.py`, `services/notes_service.py`, `storage/snapshot_store.py`, `storage/notes_store.py` |
-| Permissions and config | `services/staff_permission_service.py`, `services/permission_config_service.py`, `services/config_validation.py`, `discord_ui/config_views.py`, `cogs/config_cog.py` |
+| Permissions and config | `services/staff_permission_service.py`, `services/permission_config_service.py`, `services/config_validation.py`, `discord_ui/config_views.py`, `discord_ui/config_modal_shared.py`, `discord_ui/config_setting_modals.py`, `discord_ui/config_text_modals.py`, `cogs/config_cog.py` |
 | Persistence | `db/repositories/`, `db/connection.py`, `db/migrations.py` |
 
 ## New Feature Placement Checklist

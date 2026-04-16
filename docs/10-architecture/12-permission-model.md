@@ -66,7 +66,7 @@ This order matters. A later participant or mute overwrite can intentionally narr
 | Trigger | Owning Service or Entry Point | Expected Outcome |
 |--------|-------------------------------|------------------|
 | Draft channel creation | `CreationService.create_draft_ticket()` | Special-case initial overwrites: creator visible, bot visible, configured staff/admin hidden. |
-| Draft submit accepted | `SubmitService._grant_staff_access()` | Open current-category staff visibility for the ticket; queued path does not do this. |
+| Draft submit accepted | `SubmitService` &#8594; `SubmitSideEffectsService.grant_staff_access()` | Open current-category staff visibility for the ticket; queued path does not do this. |
 | Queued ticket promotion | `QueueService.process_next_queued_ticket()` -> `SubmitService.promote_queued_ticket()` | Same as normal submit, but executed later after capacity becomes available. |
 | Claim / transfer-claim / unclaim | `ClaimService._sync_staff_permissions()` | Recompute staff write/read behavior from claim mode and claimer identity. |
 | Sleep / wake | `SleepService._sync_ticket_permissions()` | Recompute staff + creator + muted participant access after the state change. |

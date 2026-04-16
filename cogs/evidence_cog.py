@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from cogs.ticket_command_groups import notes_group, ticket_group
 from core.errors import InvalidTicketStateError, PermissionDeniedError, TicketNotFoundError, ValidationError
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.ticket_access_service import TicketAccessService
 
 
@@ -37,7 +38,7 @@ class EvidenceCog(commands.Cog):
         try:
             parsed_id = int(message_id)
         except ValueError:
-            await self._send_ephemeral(interaction, "消息 ID 必须是一个有效的整数。")
+            await send_ephemeral_text(interaction, "消息 ID 必须是一个有效的整数。")
             return
         await self.show_message_history(interaction, message_id=parsed_id)
 
@@ -66,7 +67,7 @@ class EvidenceCog(commands.Cog):
                 context=context,
                 is_bot_owner=await self.bot.is_owner(interaction.user),
             )
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             rendered = self.snapshot_query_service.format_message_timeline(
                 context.ticket.ticket_id,
                 message_id,
@@ -78,7 +79,7 @@ class EvidenceCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -102,7 +103,7 @@ class EvidenceCog(commands.Cog):
                 context=context,
                 is_bot_owner=await self.bot.is_owner(interaction.user),
             )
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             rendered = self.snapshot_query_service.build_recycle_bin_text(context.ticket.ticket_id)
         except (
             TicketNotFoundError,
@@ -111,7 +112,7 @@ class EvidenceCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -136,7 +137,7 @@ class EvidenceCog(commands.Cog):
                 context=context,
                 is_bot_owner=await self.bot.is_owner(interaction.user),
             )
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await self.notes_service.add_note(
                 context.ticket,
                 actor=interaction.user,
@@ -149,7 +150,7 @@ class EvidenceCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -158,7 +159,7 @@ class EvidenceCog(commands.Cog):
             interaction.user.id,
             result.note_count,
         )
-        await self._send_ephemeral(
+        await send_ephemeral_text(
             interaction,
             f"已为 ticket `{result.ticket.ticket_id}` 新增内部备注（当前共 {result.note_count} 条）。",
         )
@@ -172,7 +173,7 @@ class EvidenceCog(commands.Cog):
                 context=context,
                 is_bot_owner=await self.bot.is_owner(interaction.user),
             )
-            await self._defer_ephemeral(interaction)
+            await safe_defer(interaction)
             rendered = self.notes_service.format_notes(context.ticket)
         except (
             TicketNotFoundError,
@@ -181,7 +182,7 @@ class EvidenceCog(commands.Cog):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -203,20 +204,6 @@ class EvidenceCog(commands.Cog):
         if channel is None:
             raise ValidationError("无法识别当前 ticket 频道。")
         return channel
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
     @staticmethod
     async def _send_text_payload(
         interaction: discord.Interaction,

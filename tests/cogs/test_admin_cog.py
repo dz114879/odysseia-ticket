@@ -12,10 +12,18 @@ from db.repositories.guild_repository import GuildRepository
 class FakeResponse:
     def __init__(self) -> None:
         self.messages: list[dict] = []
+        self.deferred: list[dict] = []
         self._done = False
 
     def is_done(self) -> bool:
         return self._done
+
+    async def defer(self, *, ephemeral: bool, thinking: bool | None = None) -> None:
+        self._done = True
+        payload = {"ephemeral": ephemeral}
+        if thinking is not None:
+            payload["thinking"] = thinking
+        self.deferred.append(payload)
 
     async def send_message(self, content: str, *, ephemeral: bool) -> None:
         self._done = True
@@ -111,8 +119,9 @@ async def test_run_setup_rejects_non_admin_user(migrated_database) -> None:
         admin_role=FakeRole(400),
     )
 
-    assert interaction.response.messages
-    assert "只有服务器管理员或 Bot 所有者" in interaction.response.messages[0]["content"]
+    assert interaction.response.deferred == [{"ephemeral": True}]
+    assert interaction.followup.messages
+    assert "只有服务器管理员或 Bot 所有者" in interaction.followup.messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -137,8 +146,9 @@ async def test_run_setup_persists_config_and_categories(migrated_database) -> No
     assert config.is_initialized is True
     assert config.admin_role_id == 400
     assert len(categories) == 5
-    assert interaction.response.messages
-    assert "Ticket setup 已完成" in interaction.response.messages[0]["content"]
+    assert interaction.response.deferred == [{"ephemeral": True}]
+    assert interaction.followup.messages
+    assert "Ticket setup 已完成" in interaction.followup.messages[0]["content"]
 
 
 @pytest.mark.asyncio
@@ -154,7 +164,8 @@ async def test_run_setup_reconfiguration_shows_updated_message(migrated_database
         ticket_category=FakeChannel(300),
         admin_role=FakeRole(400),
     )
-    assert "Ticket setup 已完成" in first_interaction.response.messages[0]["content"]
+    assert first_interaction.followup.messages
+    assert "Ticket setup 已完成" in first_interaction.followup.messages[0]["content"]
 
     second_interaction = FakeInteraction(FakeGuild(1), FakeUser(42, administrator=True))
     await cog.run_setup(
@@ -164,4 +175,5 @@ async def test_run_setup_reconfiguration_shows_updated_message(migrated_database
         ticket_category=FakeChannel(300),
         admin_role=FakeRole(400),
     )
-    assert "Ticket 配置已更新" in second_interaction.response.messages[0]["content"]
+    assert second_interaction.followup.messages
+    assert "Ticket 配置已更新" in second_interaction.followup.messages[0]["content"]

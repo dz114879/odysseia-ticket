@@ -14,7 +14,7 @@ There are four different configuration surfaces in the current system:
 
 | Surface | Entry Point | Stored In | Main Owner |
 |--------|-------------|-----------|------------|
-| Guild runtime config | `/ticket config` | `guild_configs` | `cogs/config_cog.py`, `discord_ui/config_views.py`, `services/config_validation.py` |
+| Guild runtime config | `/ticket config` | `guild_configs` | `cogs/config_cog.py`, `discord_ui/config_views.py`, `discord_ui/config_modal_shared.py`, `discord_ui/config_setting_modals.py`, `discord_ui/config_text_modals.py`, `services/config_validation.py` |
 | Guild setup targets | `/ticket setup` | `guild_configs` | `cogs/admin_cog.py`, `services/setup_service.py` |
 | Category staff mapping | `/ticket permission` | `ticket_categories` | `cogs/permission_cog.py`, `services/permission_config_service.py` |
 | Process/runtime settings | `.env` | process env | `config/env.py` |
@@ -54,6 +54,13 @@ Current behavioral note:
 ## Editable Runtime Domains
 
 These are the settings actually exposed today through `/ticket config`.
+
+Implementation split note:
+
+- `discord_ui/config_views.py` keeps the entry selects and ephemeral container views.
+- `discord_ui/config_setting_modals.py` owns numeric / enum settings modals.
+- `discord_ui/config_text_modals.py` owns text-editing modals.
+- `discord_ui/config_modal_shared.py` owns config loading, diff formatting, and shared submit/update plumbing.
 
 | Domain | Edited Via | Validation | Persistence | Operational Impact |
 |-------|------------|------------|-------------|--------------------|

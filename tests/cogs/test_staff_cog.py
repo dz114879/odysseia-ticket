@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from types import SimpleNamespace
 
 import pytest
@@ -13,42 +12,13 @@ from db.repositories.ticket_mute_repository import TicketMuteRepository
 from db.repositories.ticket_repository import TicketRepository
 from discord_ui.staff_panel_view import StaffPanelView, build_staff_panel_custom_id
 from runtime.locks import LockManager
-
-
-@dataclass(frozen=True)
-class FakeRole:
-    id: int
-
-
-@dataclass
-class FakeUser:
-    id: int
-    roles: list[FakeRole] = field(default_factory=list)
-    administrator: bool = False
-    bot: bool = False
-
-    @property
-    def guild_permissions(self) -> SimpleNamespace:
-        return SimpleNamespace(administrator=self.administrator)
-
-
-@dataclass
-class FakeGuild:
-    id: int
-    roles: dict[int, FakeRole] = field(default_factory=dict)
-    members: dict[int, FakeUser] = field(default_factory=dict)
-
-    def add_role(self, role: FakeRole) -> None:
-        self.roles[role.id] = role
-
-    def add_member(self, member: FakeUser) -> None:
-        self.members[member.id] = member
-
-    def get_role(self, role_id: int) -> FakeRole | None:
-        return self.roles.get(role_id)
-
-    def get_member(self, member_id: int) -> FakeUser | None:
-        return self.members.get(member_id)
+from tests.helpers.discord_fakes import (
+    FakeGuild,
+    FakeInteraction,
+    FakeMember as FakeUser,
+    FakeRole,
+    assert_deferred_ephemeral_followup,
+)
 
 
 class FakeChannel:
@@ -76,32 +46,6 @@ class FakeChannel:
     async def send(self, *, content: str | None = None, embed=None, view=None):
         self.sent_messages.append(content or "")
         return SimpleNamespace(content=content or "")
-
-
-class FakeResponse:
-    def __init__(self) -> None:
-        self.messages: list[dict[str, object]] = []
-        self.deferred: list[dict[str, object]] = []
-        self._done = False
-
-    def is_done(self) -> bool:
-        return self._done
-
-    async def send_message(self, content: str, *, ephemeral: bool) -> None:
-        self._done = True
-        self.messages.append({"content": content, "ephemeral": ephemeral})
-
-    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
-        self._done = True
-        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
-
-
-class FakeFollowup:
-    def __init__(self) -> None:
-        self.messages: list[dict[str, object]] = []
-
-    async def send(self, content: str, *, ephemeral: bool) -> None:
-        self.messages.append({"content": content, "ephemeral": ephemeral})
 
 
 class FakeLoggingService:
@@ -134,24 +78,6 @@ class FakeBot:
 
     def add_view(self, view, message_id: int | None = None) -> None:
         self.added_views.append({"view": view, "message_id": message_id})
-
-
-class FakeInteraction:
-    def __init__(self, guild: FakeGuild | None, channel: FakeChannel | None, user: FakeUser, *, bot=None, message=None) -> None:
-        self.guild = guild
-        self.channel = channel
-        self.user = user
-        self.client = bot
-        self.message = message
-        self.response = FakeResponse()
-        self.followup = FakeFollowup()
-
-
-def assert_deferred_ephemeral_followup(interaction: FakeInteraction) -> dict[str, object]:
-    assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
-    assert interaction.followup.messages
-    assert interaction.followup.messages[0]["ephemeral"] is True
-    return interaction.followup.messages[0]
 
 
 @pytest.fixture
@@ -648,7 +574,7 @@ async def test_staff_panel_claim_button_updates_ticket_and_returns_feedback(
     ticket_repository = prepared_staff_cog_context["ticket_repository"]
     view = StaffPanelView()
     claim_button = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("claim"))
-    interaction = FakeInteraction(guild, channel, staff_user, bot=bot, message=panel_message)
+    interaction = FakeInteraction(guild, channel, staff_user, client=bot, message=panel_message)
 
     await claim_button.callback(interaction)
 
@@ -672,7 +598,7 @@ async def test_staff_panel_priority_select_updates_ticket_and_returns_feedback(
     view = StaffPanelView()
     priority_select = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("priority"))
     priority_select._values = [TicketPriority.HIGH.value]
-    interaction = FakeInteraction(guild, channel, staff_user, bot=bot, message=panel_message)
+    interaction = FakeInteraction(guild, channel, staff_user, client=bot, message=panel_message)
 
     await priority_select.callback(interaction)
 
@@ -694,7 +620,7 @@ async def test_staff_panel_claim_button_rejects_stale_panel_message(prepared_sta
     view = StaffPanelView()
     claim_button = next(child for child in view.children if getattr(child, "custom_id", None) == build_staff_panel_custom_id("claim"))
     stale_message = SimpleNamespace(id=4999)
-    interaction = FakeInteraction(guild, channel, staff_user, bot=bot, message=stale_message)
+    interaction = FakeInteraction(guild, channel, staff_user, client=bot, message=stale_message)
 
     await claim_button.callback(interaction)
 

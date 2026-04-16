@@ -14,6 +14,7 @@ from core.errors import (
     ValidationError,
 )
 from discord_ui.close_feedback import build_close_feedback_message
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from discord_ui.staff_feedback import (
     build_claim_success_message,
     build_priority_success_message,
@@ -66,7 +67,7 @@ class StaffClaimButton(discord.ui.Button):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             claim_service = _build_claim_service(interaction)
             result = await claim_service.claim_ticket(
                 channel,
@@ -81,10 +82,10 @@ class StaffClaimButton(discord.ui.Button):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_claim_success_message(result))
+        await send_ephemeral_text(interaction, build_claim_success_message(result))
 
 
 class StaffUnclaimButton(discord.ui.Button):
@@ -101,7 +102,7 @@ class StaffUnclaimButton(discord.ui.Button):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             claim_service = _build_claim_service(interaction)
             result = await claim_service.unclaim_ticket(
                 channel,
@@ -116,10 +117,10 @@ class StaffUnclaimButton(discord.ui.Button):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_unclaim_success_message(result))
+        await send_ephemeral_text(interaction, build_unclaim_success_message(result))
 
 
 class StaffSleepButton(discord.ui.Button):
@@ -136,7 +137,7 @@ class StaffSleepButton(discord.ui.Button):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             sleep_service = _build_sleep_service(interaction)
             result = await sleep_service.sleep_ticket(
                 channel,
@@ -151,10 +152,10 @@ class StaffSleepButton(discord.ui.Button):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_sleep_success_message(result))
+        await send_ephemeral_text(interaction, build_sleep_success_message(result))
 
 
 class StaffCloseButton(discord.ui.Button):
@@ -171,7 +172,7 @@ class StaffCloseButton(discord.ui.Button):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             close_service = _build_close_service(interaction)
             result = await close_service.initiate_close(
                 channel,
@@ -186,10 +187,10 @@ class StaffCloseButton(discord.ui.Button):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_close_feedback_message(result))
+        await send_ephemeral_text(interaction, build_close_feedback_message(result))
 
 
 class StaffRenameModal(discord.ui.Modal, title="修改 Ticket 标题"):
@@ -206,7 +207,7 @@ class StaffRenameModal(discord.ui.Modal, title="修改 Ticket 标题"):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         try:
             channel = _require_channel(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             rename_service = _build_rename_service(interaction)
             result = await rename_service.rename_ticket(
                 channel,
@@ -221,10 +222,10 @@ class StaffRenameModal(discord.ui.Modal, title="修改 Ticket 标题"):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_rename_success_message(result))
+        await send_ephemeral_text(interaction, build_rename_success_message(result))
 
 
 class StaffRenameButton(discord.ui.Button):
@@ -242,7 +243,7 @@ class StaffRenameButton(discord.ui.Button):
             _require_channel(interaction)
             _assert_current_staff_panel(interaction)
         except (StaleInteractionError, ValidationError) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         await interaction.response.send_modal(StaffRenameModal())
@@ -264,7 +265,7 @@ class StaffPrioritySelect(discord.ui.Select):
         try:
             channel = _require_channel(interaction)
             _assert_current_staff_panel(interaction, channel=channel)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             priority_service = _build_priority_service(interaction)
             result = await priority_service.set_priority(
                 channel,
@@ -280,10 +281,10 @@ class StaffPrioritySelect(discord.ui.Select):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_priority_success_message(result))
+        await send_ephemeral_text(interaction, build_priority_success_message(result))
 
 
 class StaffPanelView(discord.ui.View):
@@ -431,16 +432,3 @@ def _build_staff_panel_service(interaction: discord.Interaction):
 
     resources = _require_resources(interaction)
     return StaffPanelService(resources.database, bot=interaction.client)
-
-
-async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-    if interaction.response.is_done():
-        await interaction.followup.send(content, ephemeral=True)
-        return
-    await interaction.response.send_message(content, ephemeral=True)
-
-
-async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-    if interaction.response.is_done():
-        return
-    await interaction.response.defer(ephemeral=True, thinking=True)

@@ -11,6 +11,7 @@ from core.errors import (
     TicketNotFoundError,
     ValidationError,
 )
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.draft_service import DraftAbandonResult, DraftService
 from services.submission_guard_service import SubmissionGuardService
 from services.submit_service import SubmitDraftResult, SubmitService
@@ -69,7 +70,7 @@ class DraftSubmitTitleModal(discord.ui.Modal, title="为您的 Ticket 取个名�
         try:
             channel = _require_channel(interaction)
             submit_service = _build_submit_service(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await submit_service.submit_draft_ticket(
                 channel,
                 actor_id=interaction.user.id,
@@ -83,10 +84,10 @@ class DraftSubmitTitleModal(discord.ui.Modal, title="为您的 Ticket 取个名�
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_submit_feedback_message(result))
+        await send_ephemeral_text(interaction, build_submit_feedback_message(result))
 
 
 class DraftSubmitButton(discord.ui.Button):
@@ -111,7 +112,7 @@ class DraftSubmitButton(discord.ui.Button):
                 return
 
             submit_service = _build_submit_service(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await submit_service.submit_draft_ticket(
                 channel,
                 actor_id=interaction.user.id,
@@ -124,10 +125,10 @@ class DraftSubmitButton(discord.ui.Button):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
-        await _send_ephemeral(interaction, build_submit_feedback_message(result))
+        await send_ephemeral_text(interaction, build_submit_feedback_message(result))
 
 
 class DraftRenameModal(discord.ui.Modal, title="为您的 Ticket 取个名字？"):
@@ -142,7 +143,7 @@ class DraftRenameModal(discord.ui.Modal, title="为您的 Ticket 取个名字？
         try:
             channel = _require_channel(interaction)
             draft_service = _build_draft_service(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await draft_service.rename_draft_ticket(
                 channel,
                 actor_id=interaction.user.id,
@@ -155,13 +156,13 @@ class DraftRenameModal(discord.ui.Modal, title="为您的 Ticket 取个名字？
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         if result.changed:
-            await _send_ephemeral(interaction, f"Ticket 标题已更新。\n- 新频道名：`{result.new_name}`")
+            await send_ephemeral_text(interaction, f"Ticket 标题已更新。\n- 新频道名：`{result.new_name}`")
         else:
-            await _send_ephemeral(interaction, f"Ticket 标题未变化。\n- 当前频道名：`{result.new_name}`")
+            await send_ephemeral_text(interaction, f"Ticket 标题未变化。\n- 当前频道名：`{result.new_name}`")
 
 
 class DraftAbandonButton(discord.ui.Button):
@@ -219,7 +220,7 @@ class DraftAbandonConfirmView(discord.ui.View):
         try:
             channel = _require_channel(interaction)
             draft_service = _build_draft_service(interaction)
-            await _defer_ephemeral(interaction)
+            await safe_defer(interaction)
             result = await draft_service.abandon_draft_ticket(
                 channel,
                 actor_id=interaction.user.id,
@@ -231,11 +232,11 @@ class DraftAbandonConfirmView(discord.ui.View):
             ValidationError,
             discord.HTTPException,
         ) as exc:
-            await _send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         try:
-            await _send_ephemeral(interaction, build_abandon_feedback_message(result))
+            await send_ephemeral_text(interaction, build_abandon_feedback_message(result))
         except discord.HTTPException:
             pass
 
@@ -279,16 +280,3 @@ def _require_channel(interaction: discord.Interaction) -> Any:
     if channel is None:
         raise ValidationError("无法识别当前 ticket 频道。")
     return channel
-
-
-async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-    if interaction.response.is_done():
-        return
-    await interaction.response.defer(ephemeral=True, thinking=True)
-
-
-async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-    if interaction.response.is_done():
-        await interaction.followup.send(content, ephemeral=True)
-        return
-    await interaction.response.send_message(content, ephemeral=True)

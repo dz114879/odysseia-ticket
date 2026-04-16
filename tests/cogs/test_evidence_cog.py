@@ -54,9 +54,12 @@ class FakeResponse:
         self._done = True
         self.messages.append({"content": content, "ephemeral": ephemeral})
 
-    async def defer(self, *, ephemeral: bool, thinking: bool) -> None:
+    async def defer(self, *, ephemeral: bool, thinking: bool | None = None) -> None:
         self._done = True
-        self.deferred.append({"ephemeral": ephemeral, "thinking": thinking})
+        payload = {"ephemeral": ephemeral}
+        if thinking is not None:
+            payload["thinking"] = thinking
+        self.deferred.append(payload)
 
 
 class FakeFollowup:
@@ -236,7 +239,7 @@ async def test_show_message_history_returns_timeline_text_for_creator(
 
     await cog.show_message_history(interaction, message_id=101)
 
-    assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert interaction.response.deferred == [{"ephemeral": True}]
     assert interaction.followup.messages
     payload = interaction.followup.messages[0]
     assert payload["ephemeral"] is True
@@ -258,7 +261,7 @@ async def test_show_recycle_bin_prefers_file_payload(prepared_evidence_cog_conte
 
     await cog.show_recycle_bin(interaction)
 
-    assert interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert interaction.response.deferred == [{"ephemeral": True}]
     payload = interaction.followup.messages[0]
     assert payload["content"] == "已生成本 ticket 内所有被删除消息快照，请尽快下载"
     assert payload["ephemeral"] is True
@@ -303,7 +306,7 @@ async def test_add_note_and_check_notes_for_staff(prepared_evidence_cog_context)
 
     await cog.add_note(add_interaction, content="  需要继续观察  ")
 
-    assert add_interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert add_interaction.response.deferred == [{"ephemeral": True}]
     assert add_interaction.followup.messages == [
         {
             "content": "已为 ticket `1-support-0001` 新增内部备注（当前共 1 条）。",
@@ -321,7 +324,7 @@ async def test_add_note_and_check_notes_for_staff(prepared_evidence_cog_context)
 
     await cog.check_notes(check_interaction)
 
-    assert check_interaction.response.deferred == [{"ephemeral": True, "thinking": True}]
+    assert check_interaction.response.deferred == [{"ephemeral": True}]
     payload = check_interaction.followup.messages[0]
     assert payload["ephemeral"] is True
     assert payload["file"] is None

@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from cogs.ticket_command_groups import panel_group
 from core.errors import PermissionDeniedError, ValidationError
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.guild_config_service import GuildConfigService
 from services.panel_service import PanelPublishResult, PanelRemovalResult, PanelService
 
@@ -49,14 +50,14 @@ class PanelCog(commands.Cog):
         await self.remove_panel(interaction, delete_message=delete_message)
 
     async def create_panel_in_channel(self, interaction: discord.Interaction) -> None:
-        await self._defer_ephemeral(interaction)
+        await safe_defer(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
             channel = self._require_sendable_channel(interaction)
             result = await self.panel_service.create_panel(channel, created_by=interaction.user.id)
         except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -72,16 +73,16 @@ class PanelCog(commands.Cog):
             channel_id=getattr(config, "log_channel_id", None) if config else None,
             extra={"panel_id": str(result.record.panel_id)},
         )
-        await self._send_ephemeral(interaction, self._build_create_success_message(result))
+        await send_ephemeral_text(interaction, self._build_create_success_message(result))
 
     async def refresh_panel(self, interaction: discord.Interaction) -> None:
-        await self._defer_ephemeral(interaction)
+        await safe_defer(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
             result = await self.panel_service.refresh_active_panel(guild.id)
         except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -97,7 +98,7 @@ class PanelCog(commands.Cog):
             channel_id=getattr(config, "log_channel_id", None) if config else None,
             extra={"panel_id": str(result.record.panel_id)},
         )
-        await self._send_ephemeral(
+        await send_ephemeral_text(
             interaction,
             f"已刷新 active panel，消息 ID：{result.record.message_id}。",
         )
@@ -108,7 +109,7 @@ class PanelCog(commands.Cog):
         *,
         delete_message: bool = False,
     ) -> None:
-        await self._defer_ephemeral(interaction)
+        await safe_defer(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_panel_permission(interaction)
@@ -117,7 +118,7 @@ class PanelCog(commands.Cog):
                 delete_message=delete_message,
             )
         except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -133,7 +134,7 @@ class PanelCog(commands.Cog):
             channel_id=getattr(config, "log_channel_id", None) if config else None,
             extra={"panel_id": str(result.record.panel_id), "message_deleted": str(result.message_deleted)},
         )
-        await self._send_ephemeral(interaction, self._build_remove_success_message(result))
+        await send_ephemeral_text(interaction, self._build_remove_success_message(result))
 
     async def _ensure_panel_permission(self, interaction: discord.Interaction) -> None:
         if await self.bot.is_owner(interaction.user):
@@ -181,21 +182,6 @@ class PanelCog(commands.Cog):
     def _build_remove_success_message(result: PanelRemovalResult) -> str:
         deleted_text = "并已删除原消息。" if result.message_deleted else "原消息保留但已失效。"
         return f"已移除 active panel，{deleted_text}"
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        """尽早 defer 交互，防止 Discord 3 秒超时导致 404 Unknown Interaction。"""
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(PanelCog(bot))

@@ -17,58 +17,7 @@ from services.snapshot_service import SnapshotBootstrapResult
 from services.capacity_service import CapacityService
 from services.queue_service import QueueService
 from services.submit_service import SubmitService
-
-
-class FakeRole:
-    def __init__(self, role_id: int) -> None:
-        self.id = role_id
-
-
-class FakeMember:
-    def __init__(self, member_id: int) -> None:
-        self.id = member_id
-        self.bot = False
-
-
-class FakeMessage:
-    def __init__(
-        self,
-        message_id: int,
-        *,
-        content: str | None = None,
-        embed: discord.Embed | None = None,
-        view=None,
-        pinned: bool = False,
-    ) -> None:
-        self.id = message_id
-        self.content = content
-        self.embed = embed
-        self.view = view
-        self.pinned = pinned
-        self.edit_calls: list[dict] = []
-
-    async def edit(self, *, view=None) -> None:
-        self.view = view
-        self.edit_calls.append({"view": view})
-
-
-class FakeGuild:
-    def __init__(self, guild_id: int) -> None:
-        self.id = guild_id
-        self.roles: dict[int, FakeRole] = {}
-        self.members: dict[int, FakeMember] = {}
-
-    def add_role(self, role: FakeRole) -> None:
-        self.roles[role.id] = role
-
-    def add_member(self, member: FakeMember) -> None:
-        self.members[member.id] = member
-
-    def get_role(self, role_id: int) -> FakeRole | None:
-        return self.roles.get(role_id)
-
-    def get_member(self, member_id: int) -> FakeMember | None:
-        return self.members.get(member_id)
+from tests.helpers.discord_fakes import FakeGuild, FakeMember, FakeMessage, FakeRole
 
 
 class FakeChannel:

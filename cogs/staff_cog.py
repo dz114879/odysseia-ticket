@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import discord
@@ -15,6 +16,7 @@ from core.errors import (
     ValidationError,
 )
 from discord_ui.help_text import build_ticket_help_message
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from discord_ui.staff_feedback import (
     build_claim_success_message,
     build_mute_success_message,
@@ -35,6 +37,15 @@ from services.rename_service import RenameService
 from services.sleep_service import SleepService
 from services.staff_panel_service import StaffPanelService
 from services.transfer_service import TransferService
+
+
+STAFF_INTERACTION_EXCEPTIONS = (
+    TicketNotFoundError,
+    InvalidTicketStateError,
+    PermissionDeniedError,
+    ValidationError,
+    discord.HTTPException,
+)
 
 
 class StaffCog(commands.Cog):
@@ -226,61 +237,33 @@ class StaffCog(commands.Cog):
         await self.show_ticket_help(interaction)
 
     async def claim_current_ticket(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.claim_service.claim_ticket(
-                channel,
-                actor=interaction.user,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket claimed. ticket_id=%s claimer_id=%s changed=%s strict_mode=%s",
-            result.ticket.ticket_id,
-            result.ticket.claimed_by,
-            result.changed,
-            result.strict_mode,
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.claim_service.claim_ticket(channel, actor=interaction.user, is_bot_owner=is_bot_owner),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket claimed. ticket_id=%s claimer_id=%s changed=%s strict_mode=%s",
+                result.ticket.ticket_id,
+                result.ticket.claimed_by,
+                result.changed,
+                result.strict_mode,
+            ),
+            build_feedback=build_claim_success_message,
         )
-        await self._send_ephemeral(interaction, build_claim_success_message(result))
 
     async def unclaim_current_ticket(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.claim_service.unclaim_ticket(
-                channel,
-                actor=interaction.user,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket unclaimed. ticket_id=%s previous_claimer_id=%s changed=%s forced=%s strict_mode=%s",
-            result.ticket.ticket_id,
-            result.previous_claimer_id,
-            result.changed,
-            result.forced,
-            result.strict_mode,
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.claim_service.unclaim_ticket(channel, actor=interaction.user, is_bot_owner=is_bot_owner),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket unclaimed. ticket_id=%s previous_claimer_id=%s changed=%s forced=%s strict_mode=%s",
+                result.ticket.ticket_id,
+                result.previous_claimer_id,
+                result.changed,
+                result.forced,
+                result.strict_mode,
+            ),
+            build_feedback=build_unclaim_success_message,
         )
-        await self._send_ephemeral(interaction, build_unclaim_success_message(result))
 
     async def transfer_claim_current_ticket(
         self,
@@ -288,35 +271,25 @@ class StaffCog(commands.Cog):
         *,
         member: discord.Member | Any,
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.claim_service.transfer_claim(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.claim_service.transfer_claim(
                 channel,
                 actor=interaction.user,
                 target=member,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket claim transferred. ticket_id=%s previous_claimer_id=%s new_claimer_id=%s changed=%s forced=%s strict_mode=%s",
-            result.ticket.ticket_id,
-            result.previous_claimer_id,
-            result.ticket.claimed_by,
-            result.changed,
-            result.forced,
-            result.strict_mode,
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket claim transferred. ticket_id=%s previous_claimer_id=%s new_claimer_id=%s changed=%s forced=%s strict_mode=%s",
+                result.ticket.ticket_id,
+                result.previous_claimer_id,
+                result.ticket.claimed_by,
+                result.changed,
+                result.forced,
+                result.strict_mode,
+            ),
+            build_feedback=build_transfer_claim_success_message,
         )
-        await self._send_ephemeral(interaction, build_transfer_claim_success_message(result))
 
     async def mute_current_ticket(
         self,
@@ -326,35 +299,25 @@ class StaffCog(commands.Cog):
         duration: str | None = None,
         reason: str | None = None,
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.moderation_service.mute_member(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.moderation_service.mute_member(
                 channel,
                 actor=interaction.user,
                 target=member,
                 duration=duration,
                 reason=reason,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket participant muted. ticket_id=%s target_id=%s expire_at=%s changed=%s",
-            result.ticket.ticket_id,
-            result.target_id,
-            result.expire_at,
-            result.changed,
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket participant muted. ticket_id=%s target_id=%s expire_at=%s changed=%s",
+                result.ticket.ticket_id,
+                result.target_id,
+                result.expire_at,
+                result.changed,
+            ),
+            build_feedback=build_mute_success_message,
         )
-        await self._send_ephemeral(interaction, build_mute_success_message(result))
 
     async def unmute_current_ticket(
         self,
@@ -362,32 +325,22 @@ class StaffCog(commands.Cog):
         *,
         member: discord.Member | Any,
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.moderation_service.unmute_member(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.moderation_service.unmute_member(
                 channel,
                 actor=interaction.user,
                 target=member,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket participant unmuted. ticket_id=%s target_id=%s changed=%s",
-            result.ticket.ticket_id,
-            result.target_id,
-            result.changed,
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket participant unmuted. ticket_id=%s target_id=%s changed=%s",
+                result.ticket.ticket_id,
+                result.target_id,
+                result.changed,
+            ),
+            build_feedback=build_unmute_success_message,
         )
-        await self._send_ephemeral(interaction, build_unmute_success_message(result))
 
     async def set_current_ticket_priority(
         self,
@@ -395,61 +348,37 @@ class StaffCog(commands.Cog):
         *,
         priority: TicketPriority,
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.priority_service.set_priority(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.priority_service.set_priority(
                 channel,
                 actor=interaction.user,
                 priority=priority,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket priority updated. ticket_id=%s old_priority=%s new_priority=%s changed=%s channel_name_changed=%s",
-            result.ticket_id,
-            result.old_priority.value,
-            result.new_priority.value,
-            result.changed,
-            result.channel_name_changed,
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket priority updated. ticket_id=%s old_priority=%s new_priority=%s changed=%s channel_name_changed=%s",
+                result.ticket_id,
+                result.old_priority.value,
+                result.new_priority.value,
+                result.changed,
+                result.channel_name_changed,
+            ),
+            build_feedback=build_priority_success_message,
         )
-        await self._send_ephemeral(interaction, build_priority_success_message(result))
 
     async def sleep_current_ticket(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.sleep_service.sleep_ticket(
-                channel,
-                actor=interaction.user,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket entered sleep. ticket_id=%s previous_priority=%s channel_name_changed=%s",
-            result.ticket.ticket_id,
-            result.previous_priority.value,
-            result.channel_name_changed,
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.sleep_service.sleep_ticket(channel, actor=interaction.user, is_bot_owner=is_bot_owner),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket entered sleep. ticket_id=%s previous_priority=%s channel_name_changed=%s",
+                result.ticket.ticket_id,
+                result.previous_priority.value,
+                result.channel_name_changed,
+            ),
+            build_feedback=build_sleep_success_message,
         )
-        await self._send_ephemeral(interaction, build_sleep_success_message(result))
 
     async def rename_current_ticket(
         self,
@@ -457,34 +386,24 @@ class StaffCog(commands.Cog):
         *,
         title: str,
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.rename_service.rename_ticket(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.rename_service.rename_ticket(
                 channel,
                 actor=interaction.user,
                 requested_name=title,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket renamed. ticket_id=%s status=%s old_name=%s new_name=%s changed=%s",
-            result.ticket.ticket_id,
-            result.ticket.status.value,
-            result.old_name,
-            result.new_name,
-            result.changed,
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket renamed. ticket_id=%s status=%s old_name=%s new_name=%s changed=%s",
+                result.ticket.ticket_id,
+                result.ticket.status.value,
+                result.old_name,
+                result.new_name,
+                result.changed,
+            ),
+            build_feedback=build_rename_success_message,
         )
-        await self._send_ephemeral(interaction, build_rename_success_message(result))
 
     async def transfer_current_ticket(
         self,
@@ -493,68 +412,48 @@ class StaffCog(commands.Cog):
         target_category_key: str,
         reason: str | None = None,
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.transfer_service.transfer_ticket(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.transfer_service.transfer_ticket(
                 channel,
                 actor=interaction.user,
                 target_category_key=target_category_key,
                 reason=reason,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket transfer initiated. ticket_id=%s previous_status=%s target_category=%s initiated_by=%s",
-            result.ticket.ticket_id,
-            result.previous_status.value,
-            result.target_category.category_key,
-            getattr(interaction.user, "id", None),
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket transfer initiated. ticket_id=%s previous_status=%s target_category=%s initiated_by=%s",
+                result.ticket.ticket_id,
+                result.previous_status.value,
+                result.target_category.category_key,
+                getattr(interaction.user, "id", None),
+            ),
+            build_feedback=build_transfer_success_message,
         )
-        await self._send_ephemeral(interaction, build_transfer_success_message(result))
 
     async def untransfer_current_ticket(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await self._defer_ephemeral(interaction)
-            result = await self.transfer_service.cancel_transfer(
+        await self._execute_ticket_action(
+            interaction,
+            action=lambda channel, is_bot_owner: self.transfer_service.cancel_transfer(
                 channel,
                 actor=interaction.user,
-                is_bot_owner=await self.bot.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await self._send_ephemeral(interaction, str(exc))
-            return
-
-        self.logging_service.log_local_info(
-            "Ticket transfer cancelled. ticket_id=%s restored_status=%s target_category=%s cancelled_by=%s",
-            result.ticket.ticket_id,
-            result.restored_status.value,
-            result.previous_target_category_key,
-            getattr(interaction.user, "id", None),
+                is_bot_owner=is_bot_owner,
+            ),
+            log_result=lambda result: self.logging_service.log_local_info(
+                "Ticket transfer cancelled. ticket_id=%s restored_status=%s target_category=%s cancelled_by=%s",
+                result.ticket.ticket_id,
+                result.restored_status.value,
+                result.previous_target_category_key,
+                getattr(interaction.user, "id", None),
+            ),
+            build_feedback=build_untransfer_success_message,
         )
-        await self._send_ephemeral(interaction, build_untransfer_success_message(result))
 
     async def show_ticket_help(self, interaction: discord.Interaction) -> None:
         try:
             self._require_guild_context(interaction)
         except ValidationError as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         self.logging_service.log_local_info(
@@ -562,7 +461,26 @@ class StaffCog(commands.Cog):
             getattr(getattr(interaction, "channel", None), "id", None),
             getattr(getattr(interaction, "user", None), "id", None),
         )
-        await self._send_ephemeral(interaction, build_ticket_help_message())
+        await send_ephemeral_text(interaction, build_ticket_help_message())
+
+    async def _execute_ticket_action(
+        self,
+        interaction: discord.Interaction,
+        *,
+        action: Callable[[Any, bool], Awaitable[Any]],
+        log_result: Callable[[Any], None],
+        build_feedback: Callable[[Any], str],
+    ) -> None:
+        try:
+            channel = self._require_ticket_channel(interaction)
+            await safe_defer(interaction)
+            result = await action(channel, await self.bot.is_owner(interaction.user))
+        except STAFF_INTERACTION_EXCEPTIONS as exc:
+            await send_ephemeral_text(interaction, str(exc))
+            return
+
+        log_result(result)
+        await send_ephemeral_text(interaction, build_feedback(result))
 
     @staticmethod
     def _require_ticket_channel(interaction: discord.Interaction) -> Any:
@@ -578,19 +496,6 @@ class StaffCog(commands.Cog):
         if interaction.guild is None:
             raise ValidationError("该命令只能在服务器中使用。")
         return interaction.channel
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

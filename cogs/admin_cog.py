@@ -6,8 +6,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core.errors import PermissionDeniedError, ValidationError
 from cogs.ticket_command_groups import ticket_group
+from core.errors import PermissionDeniedError, ValidationError
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
 from services.setup_service import SetupResult, SetupService
 
 
@@ -58,6 +59,7 @@ class AdminCog(commands.Cog):
         admin_role: Any,
     ) -> None:
         try:
+            await safe_defer(interaction)
             guild = self._require_guild(interaction)
             await self._ensure_setup_permission(interaction)
             result = self.setup_service.setup_guild(
@@ -68,7 +70,7 @@ class AdminCog(commands.Cog):
                 admin_role_id=admin_role.id,
             )
         except (PermissionDeniedError, ValidationError, discord.HTTPException) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         log_title = "服务器配置已更新" if result.is_reconfiguration else "服务器初始化完成"
@@ -92,7 +94,7 @@ class AdminCog(commands.Cog):
             channel_id=result.config.log_channel_id,
             extra={"admin_role_id": str(admin_role.id), "categories": str(len(result.categories))},
         )
-        await self._send_ephemeral(interaction, self._build_setup_success_message(result))
+        await send_ephemeral_text(interaction, self._build_setup_success_message(result))
 
     async def _ensure_setup_permission(self, interaction: discord.Interaction) -> None:
         if await self.bot.is_owner(interaction.user):
@@ -125,14 +127,6 @@ class AdminCog(commands.Cog):
             f"- 分类预览：{category_summary}\n"
             f"- 结果：{created_text}"
         )
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
 
 async def setup(bot: commands.Bot) -> None:
     try:

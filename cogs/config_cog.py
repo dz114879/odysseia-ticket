@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from cogs.ticket_command_groups import ticket_group
 from core.errors import PermissionDeniedError, ValidationError
+from discord_ui.interaction_helpers import safe_defer, send_ephemeral_message, send_ephemeral_text
 from discord_ui.config_views import ConfigPanelView
 from services.guild_config_service import GuildConfigService
 
@@ -30,7 +31,7 @@ class ConfigCog(commands.Cog):
         await self.run_config(interaction)
 
     async def run_config(self, interaction: discord.Interaction) -> None:
-        await self._defer_ephemeral(interaction)
+        await safe_defer(interaction)
         try:
             guild = self._require_guild(interaction)
             await self._ensure_permission(interaction)
@@ -39,7 +40,7 @@ class ConfigCog(commands.Cog):
             if config is None or not config.is_initialized:
                 raise ValidationError("当前服务器尚未完成 Ticket setup，请先执行 /ticket setup。")
         except (PermissionDeniedError, ValidationError) as exc:
-            await self._send_ephemeral(interaction, str(exc))
+            await send_ephemeral_text(interaction, str(exc))
             return
 
         embed = discord.Embed(
@@ -57,7 +58,7 @@ class ConfigCog(commands.Cog):
         embed.set_footer(text=f"当前时区: {config.timezone} | 活跃上限: {config.max_open_tickets} | 认领模式: {config.claim_mode.value}")
 
         view = ConfigPanelView(guild_id=guild.id, config=config)
-        await self._send_ephemeral_with_view(interaction, embed=embed, view=view)
+        await send_ephemeral_message(interaction, embed=embed, view=view)
 
     async def _ensure_permission(self, interaction: discord.Interaction) -> None:
         if await self.bot.is_owner(interaction.user):
@@ -84,32 +85,6 @@ class ConfigCog(commands.Cog):
         if interaction.guild is None:
             raise ValidationError("该命令只能在服务器中使用。")
         return interaction.guild
-
-    @staticmethod
-    async def _defer_ephemeral(interaction: discord.Interaction) -> None:
-        if interaction.response.is_done():
-            return
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-    @staticmethod
-    async def _send_ephemeral(interaction: discord.Interaction, content: str) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(content, ephemeral=True)
-            return
-        await interaction.response.send_message(content, ephemeral=True)
-
-    @staticmethod
-    async def _send_ephemeral_with_view(
-        interaction: discord.Interaction,
-        *,
-        embed: discord.Embed,
-        view: discord.ui.View,
-    ) -> None:
-        if interaction.response.is_done():
-            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-            return
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ConfigCog(bot))

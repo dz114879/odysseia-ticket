@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -21,24 +20,7 @@ from services.close_service import CloseService
 from services.snapshot_query_service import SnapshotQueryService
 from storage.file_store import TicketFileStore
 from storage.snapshot_store import SnapshotStore
-
-
-@dataclass(frozen=True)
-class FakeRole:
-    id: int
-
-
-@dataclass
-class FakeMember:
-    id: int
-    name: str
-    roles: list[FakeRole] = field(default_factory=list)
-    administrator: bool = False
-    bot: bool = False
-
-    @property
-    def guild_permissions(self) -> SimpleNamespace:
-        return SimpleNamespace(administrator=self.administrator)
+from tests.helpers.discord_fakes import FakeGuild, FakeMember, FakeMessage, FakeRole
 
 
 @dataclass
@@ -56,49 +38,6 @@ class FakeHistoryMessage:
     attachments: list[FakeAttachment] = field(default_factory=list)
 
 
-class FakeMessage:
-    def __init__(
-        self,
-        message_id: int,
-        *,
-        content: str | None = None,
-        embed=None,
-        view=None,
-        file=None,
-    ) -> None:
-        self.id = message_id
-        self.content = content
-        self.embed = embed
-        self.view = view
-        self.file = file
-        self.edit_calls: list[dict[str, object]] = []
-
-    async def edit(self, *, content=None, embed=None, view=None) -> None:
-        if content is not None:
-            self.content = content
-        if embed is not None:
-            self.embed = embed
-        self.view = view
-        self.edit_calls.append({"content": content, "embed": embed, "view": view})
-
-
-class FakeGuild:
-    def __init__(self, guild_id: int) -> None:
-        self.id = guild_id
-        self.roles: dict[int, FakeRole] = {}
-        self.members: dict[int, FakeMember] = {}
-
-    def add_role(self, role: FakeRole) -> None:
-        self.roles[role.id] = role
-
-    def add_member(self, member: FakeMember) -> None:
-        self.members[member.id] = member
-
-    def get_role(self, role_id: int) -> FakeRole | None:
-        return self.roles.get(role_id)
-
-    def get_member(self, member_id: int) -> FakeMember | None:
-        return self.members.get(member_id)
 
 
 class FakeTextChannel:

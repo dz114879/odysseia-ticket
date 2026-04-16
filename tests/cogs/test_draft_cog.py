@@ -16,6 +16,7 @@ from runtime.locks import LockManager
 class FakeResponse:
     def __init__(self) -> None:
         self.messages: list[dict] = []
+        self.deferred: list[dict] = []
         self._done = False
 
     def is_done(self) -> bool:
@@ -25,8 +26,12 @@ class FakeResponse:
         self._done = True
         self.messages.append({"content": content, "ephemeral": ephemeral, "view": view})
 
-    async def defer(self, *, ephemeral: bool, thinking: bool = False) -> None:
+    async def defer(self, *, ephemeral: bool, thinking: bool | None = None) -> None:
         self._done = True
+        payload = {"ephemeral": ephemeral}
+        if thinking is not None:
+            payload["thinking"] = thinking
+        self.deferred.append(payload)
 
 
 class FakeFollowup:
@@ -34,7 +39,7 @@ class FakeFollowup:
         self.messages: list[dict] = []
 
     async def send(self, content: str, *, ephemeral: bool, view: object | None = None) -> None:
-        self.messages.append({"content": content, "ephemeral": ephemeral})
+        self.messages.append({"content": content, "ephemeral": ephemeral, "view": view})
 
 
 @dataclass
@@ -131,9 +136,10 @@ async def test_rename_current_draft_updates_channel_and_returns_feedback(
 
     stored = TicketRepository(migrated_database).get_by_channel_id(channel.id)
 
-    assert interaction.response.messages
-    assert "draft 标题已更新" in interaction.response.messages[0]["content"]
-    assert "登录异常-复现" in interaction.response.messages[0]["content"]
+    assert interaction.response.deferred == [{"ephemeral": True}]
+    assert interaction.followup.messages
+    assert "draft 标题已更新" in interaction.followup.messages[0]["content"]
+    assert "登录异常-复现" in interaction.followup.messages[0]["content"]
     assert channel.name == "登录异常-复现"
     assert stored is not None
     assert stored.status is TicketStatus.DRAFT
@@ -180,5 +186,6 @@ async def test_rename_current_draft_rejects_non_creator(prepared_draft_cog_conte
 
     await cog.rename_current_draft(interaction, title="别人的工单")
 
-    assert interaction.response.messages
-    assert "只有 ticket 创建者" in interaction.response.messages[0]["content"]
+    assert interaction.response.deferred == [{"ephemeral": True}]
+    assert interaction.followup.messages
+    assert "只有 ticket 创建者" in interaction.followup.messages[0]["content"]
