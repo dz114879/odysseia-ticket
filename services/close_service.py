@@ -18,12 +18,12 @@ from db.repositories.ticket_repository import TicketRepository
 from runtime.locks import LockManager
 from services.archive_service import ArchivePipelineResult, ArchiveService
 from services.capacity_service import CapacityService
+from services.close_notice_support import CloseNoticeSupport, send_channel_log
+from services.close_permission_support import ClosePermissionSupport
 from services.queue_service import QueueService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
-from discord_ui.close_embeds import build_closing_notice_embed, build_closing_revoked_embed
-from discord_ui.close_views import ClosingNoticeView
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +75,11 @@ class CloseService:
         self.permission_service = permission_service or StaffPermissionService()
         self.staff_panel_service = staff_panel_service
         self.logger = logger or logging.getLogger(__name__)
+        self.notice_support = CloseNoticeSupport(logger=self.logger)
+        self.permission_support = ClosePermissionSupport(
+            permission_service=self.permission_service,
+            ticket_mute_repository=self.ticket_mute_repository,
+        )
         self.capacity_service = capacity_service or CapacityService(
             database,
             ticket_repository=self.ticket_repository,
@@ -95,7 +100,6 @@ class CloseService:
             lock_manager=lock_manager,
             logger=self.logger.getChild("archive"),
         )
-        self._closing_notice_messages: dict[str, Any] = {}
 
     async def initiate_close(
         self,
@@ -160,9 +164,10 @@ class CloseService:
             )
 
             try:
-                await self._freeze_ticket_permissions(channel, context=context)
-                log_message = await self._send_closing_notice(
+                await self.permission_support.freeze_ticket_permissions(channel, context=context)
+                log_message = await self.notice_support.send_closing_notice(
                     channel,
+                    close_service=self,
                     ticket=updated_ticket,
                     initiated_by_id=actor_id,
                     requested_by_id=requested_by_id,
@@ -230,18 +235,18 @@ class CloseService:
                 )
                 or context.ticket
             )
-            await self._restore_ticket_permissions(
+            await self.permission_support.restore_ticket_permissions(
                 channel,
                 context=context,
                 ticket=updated_ticket,
             )
-            await self._edit_closing_notice_as_revoked(
+            await self.notice_support.edit_notice_as_revoked(
                 context.ticket.ticket_id,
                 ticket=updated_ticket,
                 revoked_by_id=actor_id,
                 restored_status=restored_status,
             )
-            log_message = await self._send_channel_log(
+            log_message = await send_channel_log(
                 channel,
                 content=(f"↩️ <@{actor_id}> 已撤销 ticket `{updated_ticket.ticket_id}` 的关闭流程。\n- 恢复状态：`{restored_status.value}`"),
             )
@@ -303,7 +308,7 @@ class CloseService:
             updated_at=context.ticket.updated_at,
         )
         try:
-            await self._restore_ticket_permissions(
+            await self.permission_support.restore_ticket_permissions(
                 channel,
                 context=context,
                 ticket=context.ticket,
@@ -324,150 +329,6 @@ class CloseService:
                     description=f"关闭回滚后恢复权限失败：{exc}",
                     channel_id=getattr(config, "log_channel_id", None) if config else None,
                 )
-
-    async def _freeze_ticket_permissions(
-        self,
-        channel: Any,
-        *,
-        context: StaffTicketContext,
-    ) -> None:
-        guild = getattr(channel, "guild", None)
-        set_permissions = getattr(channel, "set_permissions", None)
-        if guild is None or set_permissions is None:
-            return
-
-        readonly_overwrite = self.permission_service.build_participant_overwrite(can_send=False)
-        targets = self.permission_service.resolve_staff_targets(
-            guild,
-            config=context.config,
-            category=context.category,
-        )
-        creator = self._resolve_channel_member(channel, context.ticket.creator_id)
-        active_claimer = self._resolve_channel_member(channel, context.ticket.claimed_by)
-        muted_participants = self._resolve_muted_participants(
-            channel,
-            ticket_id=context.ticket.ticket_id,
-        )
-
-        unique_targets: list[Any] = []
-        seen_ids: set[int] = set()
-        for target in [*targets, creator, active_claimer, *muted_participants]:
-            target_id = getattr(target, "id", None)
-            if target is None or target_id is None or target_id in seen_ids:
-                continue
-            seen_ids.add(target_id)
-            unique_targets.append(target)
-
-        for target in unique_targets:
-            await set_permissions(
-                target,
-                overwrite=readonly_overwrite,
-                reason=f"Lock ticket {context.ticket.ticket_id} during closing window",
-            )
-
-    async def _restore_ticket_permissions(
-        self,
-        channel: Any,
-        *,
-        context: StaffTicketContext,
-        ticket: TicketRecord,
-    ) -> None:
-        creator = self._resolve_channel_member(channel, ticket.creator_id)
-        active_claimer = self._resolve_channel_member(channel, ticket.claimed_by)
-        muted_participants = self._resolve_muted_participants(
-            channel,
-            ticket_id=ticket.ticket_id,
-        )
-        await self.permission_service.apply_ticket_permissions(
-            channel,
-            config=context.config,
-            category=context.category,
-            active_claimer=active_claimer,
-            creator=creator,
-            muted_participants=muted_participants,
-            visible_reason=f"Restore staff access after closing revoke for {ticket.ticket_id}",
-            creator_reason=f"Restore creator access after closing revoke for {ticket.ticket_id}",
-            muted_reason=f"Preserve muted participant state after closing revoke for {ticket.ticket_id}",
-        )
-
-    async def _send_closing_notice(
-        self,
-        channel: Any,
-        *,
-        ticket: TicketRecord,
-        initiated_by_id: int,
-        requested_by_id: int | None,
-        close_revoke_window_seconds: int = CLOSE_REVOKE_WINDOW_SECONDS,
-    ) -> Any | None:
-        send = getattr(channel, "send", None)
-        if send is None:
-            return None
-        view = ClosingNoticeView(
-            close_service=self,
-            ticket_id=ticket.ticket_id,
-            timeout=float(close_revoke_window_seconds),
-        )
-        message = await send(
-            embed=build_closing_notice_embed(
-                ticket,
-                initiated_by_id=initiated_by_id,
-                reason=ticket.close_reason,
-                close_execute_at=ticket.close_execute_at or "未知",
-                requested_by_id=requested_by_id,
-                close_revoke_window_seconds=close_revoke_window_seconds,
-            ),
-            view=view,
-        )
-        view.bind_message(message)
-        self._closing_notice_messages[ticket.ticket_id] = message
-        return message
-
-    async def _edit_closing_notice_as_revoked(
-        self,
-        ticket_id: str,
-        *,
-        ticket: TicketRecord,
-        revoked_by_id: int,
-        restored_status: TicketStatus,
-    ) -> None:
-        notice_msg = self._closing_notice_messages.pop(ticket_id, None)
-        if notice_msg is None:
-            return
-        try:
-            await notice_msg.edit(
-                embed=build_closing_revoked_embed(
-                    ticket,
-                    revoked_by_id=revoked_by_id,
-                    restored_status=restored_status,
-                ),
-                view=None,
-            )
-        except Exception:
-            self.logger.debug("Failed to edit closing notice for %s", ticket_id, exc_info=True)
-
-    @staticmethod
-    async def _send_channel_log(channel: Any, *, content: str) -> Any | None:
-        send = getattr(channel, "send", None)
-        if send is None:
-            return None
-        return await send(content=content)
-
-    def _resolve_muted_participants(self, channel: Any, *, ticket_id: str) -> list[Any]:
-        return [
-            member
-            for record in self.ticket_mute_repository.list_by_ticket(ticket_id)
-            if (member := self._resolve_channel_member(channel, record.user_id)) is not None
-        ]
-
-    @staticmethod
-    def _resolve_channel_member(channel: Any, user_id: int | None) -> Any | None:
-        if user_id is None:
-            return None
-        guild = getattr(channel, "guild", None)
-        get_member = getattr(guild, "get_member", None)
-        if not callable(get_member):
-            return None
-        return get_member(user_id)
 
     async def _trigger_queue_fill(self, guild_id: int) -> None:
         if self.queue_service is None:

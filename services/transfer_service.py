@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
-from collections.abc import AsyncIterator
 
 from core.constants import TRANSFER_EXECUTION_DELAY_SECONDS
 from core.enums import TicketStatus
@@ -23,6 +22,15 @@ from services.queue_service import QueueService
 from services.staff_guard_service import StaffGuardService, StaffTicketContext
 from services.staff_permission_service import StaffPermissionService
 from services.staff_panel_service import StaffPanelService
+from services.transfer_history_support import append_transfer_history, build_transfer_execute_at, is_due_for_execution, to_utc_datetime
+from services.transfer_log_support import (
+    build_cancel_transfer_log_content,
+    build_execute_transfer_log_content,
+    build_transfer_log_content,
+    send_channel_log,
+    send_transfer_completion_log,
+)
+from services.transfer_runtime_support import TransferPermissionContext, resolve_channel, sync_transfer_permissions
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,7 +189,7 @@ class TransferService:
             )
             # 从公会配置中读取转交延迟秒数，若无配置则使用默认值
             config_delay = preparation.context.config.transfer_delay_seconds if preparation.context.config else TRANSFER_EXECUTION_DELAY_SECONDS
-            scheduled_execute_at = self._build_transfer_execute_at(now, delay_seconds=config_delay)
+            scheduled_execute_at = build_transfer_execute_at(now, delay_seconds=config_delay)
             ticket = preparation.context.ticket
             updated_ticket = (
                 self.ticket_repository.update(
@@ -195,9 +203,9 @@ class TransferService:
                 )
                 or ticket
             )
-            log_message = await self._send_channel_log(
+            log_message = await send_channel_log(
                 channel,
-                content=self._build_transfer_log_content(
+                content=build_transfer_log_content(
                     actor_id=actor_id,
                     ticket_id=ticket.ticket_id,
                     previous_status=ticket.status,
@@ -260,9 +268,9 @@ class TransferService:
                 )
                 or context.ticket
             )
-            log_message = await self._send_channel_log(
+            log_message = await send_channel_log(
                 channel,
-                content=self._build_cancel_transfer_log_content(
+                content=build_cancel_transfer_log_content(
                     actor_id=actor_id,
                     ticket_id=context.ticket.ticket_id,
                     restored_status=restored_status,
@@ -290,7 +298,7 @@ class TransferService:
         *,
         now: datetime | str | None = None,
     ) -> list[TransferExecutionResult]:
-        reference_time = self._to_utc_datetime(now)
+        reference_time = to_utc_datetime(now)
         outcomes: list[TransferExecutionResult] = []
 
         for ticket in self.ticket_repository.list_due_transfer_executions(reference_time.isoformat()):
@@ -335,16 +343,17 @@ class TransferService:
             ticket = self.ticket_repository.get_by_ticket_id(ticket_id)
             if ticket is None or ticket.status is not TicketStatus.TRANSFERRING:
                 return None
-            if not self._is_due_for_execution(ticket, reference_time):
+            if not is_due_for_execution(ticket, reference_time):
                 return None
 
             config = self._require_guild_config(ticket.guild_id)
             restored_status = self._resolve_restored_status(ticket)
             previous_category = self.guild_repository.get_category(ticket.guild_id, ticket.category_key)
             target_category = self._resolve_execution_target_category(ticket)
-            history_json = self._append_transfer_history(
+            executed_at = reference_time.isoformat()
+            history_json = append_transfer_history(
                 ticket,
-                executed_at=reference_time.isoformat(),
+                executed_at=executed_at,
                 restored_status=restored_status,
             )
 
@@ -364,16 +373,20 @@ class TransferService:
                 or ticket
             )
 
-            channel = await self._resolve_channel(updated_ticket.channel_id)
+            channel = await resolve_channel(self.bot, updated_ticket.channel_id)
             if channel is not None:
                 try:
-                    await self._sync_transfer_permissions(
+                    await sync_transfer_permissions(
+                        self.permission_service,
+                        self.ticket_mute_repository,
                         channel=channel,
-                        config=config,
-                        previous_category=previous_category,
-                        target_category=target_category,
+                        context=TransferPermissionContext(
+                            config=config,
+                            previous_category=previous_category,
+                            target_category=target_category,
+                            previous_claimer_id=ticket.claimed_by,
+                        ),
                         ticket=updated_ticket,
-                        previous_claimer_id=ticket.claimed_by,
                     )
                 except Exception as exc:
                     self.logger.exception(
@@ -393,9 +406,9 @@ class TransferService:
             log_message = None
             if channel is not None:
                 try:
-                    log_message = await self._send_channel_log(
+                    log_message = await send_channel_log(
                         channel,
-                        content=self._build_execute_transfer_log_content(
+                        content=build_execute_transfer_log_content(
                             ticket_id=ticket.ticket_id,
                             previous_category_key=ticket.category_key,
                             previous_category=previous_category,
@@ -403,7 +416,7 @@ class TransferService:
                             restored_status=restored_status,
                             previous_claimer_id=ticket.claimed_by,
                             reason=ticket.transfer_reason,
-                            executed_at=reference_time.isoformat(),
+                            executed_at=executed_at,
                         ),
                     )
                 except Exception:
@@ -415,7 +428,8 @@ class TransferService:
             if self.staff_panel_service is not None:
                 self.staff_panel_service.request_refresh(updated_ticket.ticket_id)
 
-            guild_log_sent = await self._send_transfer_completion_log(
+            guild_log_sent = await send_transfer_completion_log(
+                self.logging_service,
                 ticket=updated_ticket,
                 config=config,
                 previous_category_key=ticket.category_key,
@@ -423,7 +437,7 @@ class TransferService:
                 target_category=target_category,
                 restored_status=restored_status,
                 previous_claimer_id=ticket.claimed_by,
-                executed_at=reference_time.isoformat(),
+                executed_at=executed_at,
                 reason=ticket.transfer_reason,
             )
 
@@ -467,72 +481,6 @@ class TransferService:
         raise ValidationError("目标分类不存在、未启用，或与当前分类相同。")
 
     @staticmethod
-    def _build_transfer_log_content(
-        *,
-        actor_id: int,
-        ticket_id: str,
-        previous_status: TicketStatus,
-        target_category: TicketCategoryConfig,
-        reason: str | None,
-        current_claimer_id: int | None,
-        execute_at: str | None,
-    ) -> str:
-        lines = [
-            f"🔁 <@{actor_id}> 已发起 ticket `{ticket_id}` 的跨分类转交。",
-            f"- 原状态：{TransferService.get_status_label(previous_status)}",
-            f"- 目标分类：{target_category.display_name} (`{target_category.category_key}`)",
-            f"- 当前认领者：<@{current_claimer_id}>" if current_claimer_id is not None else "- 当前认领者：未认领",
-        ]
-        if reason is not None:
-            lines.append(f"- 转交理由：{reason}")
-        if execute_at is not None:
-            lines.append(f"- 计划执行时间：{execute_at}")
-        return "\n".join(lines)
-
-    @staticmethod
-    def _build_cancel_transfer_log_content(
-        *,
-        actor_id: int,
-        ticket_id: str,
-        restored_status: TicketStatus,
-        previous_target_category_key: str | None,
-        reason: str | None,
-    ) -> str:
-        lines = [
-            f"↩️ <@{actor_id}> 已撤销 ticket `{ticket_id}` 的跨分类转交。",
-            f"- 恢复状态：{TransferService.get_status_label(restored_status)}",
-            (f"- 原目标分类：`{previous_target_category_key}`" if previous_target_category_key is not None else "- 原目标分类：未知"),
-        ]
-        if reason is not None:
-            lines.append(f"- 原转交理由：{reason}")
-        return "\n".join(lines)
-
-    @staticmethod
-    def _build_execute_transfer_log_content(
-        *,
-        ticket_id: str,
-        previous_category_key: str,
-        previous_category: TicketCategoryConfig | None,
-        target_category: TicketCategoryConfig,
-        restored_status: TicketStatus,
-        previous_claimer_id: int | None,
-        reason: str | None,
-        executed_at: str,
-    ) -> str:
-        previous_category_name = previous_category.display_name if previous_category is not None else previous_category_key
-        lines = [
-            f"✅ ticket `{ticket_id}` 的跨分类转交已执行。",
-            f"- 原分类：{previous_category_name} (`{previous_category_key}`)",
-            f"- 新分类：{target_category.display_name} (`{target_category.category_key}`)",
-            f"- 恢复状态：{TransferService.get_status_label(restored_status)}",
-            f"- 原认领者：<@{previous_claimer_id}>" if previous_claimer_id is not None else "- 原认领者：未认领",
-            f"- 执行时间：{executed_at}",
-        ]
-        if reason is not None:
-            lines.append(f"- 原转交理由：{reason}")
-        return "\n".join(lines)
-
-    @staticmethod
     def _resolve_restored_status(ticket: Any) -> TicketStatus:
         status_before = getattr(ticket, "status_before", None)
         if status_before in (TicketStatus.SUBMITTED, TicketStatus.SLEEP):
@@ -571,191 +519,10 @@ class TransferService:
             f"当前 active 容量已满（{capacity.active_count}/{preparation_context.config.max_open_tickets}），暂时无法从 sleep 发起 transfer。"
         )
 
-    @staticmethod
-    def get_status_label(status: TicketStatus) -> str:
-        labels = {
-            TicketStatus.SUBMITTED: "submitted 处理中",
-            TicketStatus.SLEEP: "sleep 挂起中",
-            TicketStatus.TRANSFERRING: "transferring 转交中",
-        }
-        return labels.get(status, status.value)
-
-    async def _resolve_channel(self, channel_id: int | None) -> Any | None:
-        if self.bot is None or channel_id is None:
-            return None
-
-        channel = getattr(self.bot, "get_channel", lambda _: None)(channel_id)
-        if channel is not None:
-            return channel
-
-        fetch_channel = getattr(self.bot, "fetch_channel", None)
-        if fetch_channel is None:
-            return None
-
-        try:
-            return await fetch_channel(channel_id)
-        except Exception:
-            return None
-
     async def _trigger_queue_fill(self, guild_id: int) -> None:
         if self.queue_service is None:
             return
         await self.queue_service.process_next_queued_ticket(guild_id)
-
-    async def _sync_transfer_permissions(
-        self,
-        *,
-        channel: Any,
-        config: GuildConfigRecord,
-        previous_category: TicketCategoryConfig | None,
-        target_category: TicketCategoryConfig,
-        ticket: Any,
-        previous_claimer_id: int | None,
-    ) -> None:
-        creator = self._resolve_channel_member(channel, getattr(ticket, "creator_id", 0))
-        muted_participants = self._resolve_muted_participants(channel, ticket.ticket_id)
-        await self.permission_service.apply_ticket_permissions(
-            channel,
-            config=config,
-            category=target_category,
-            creator=creator,
-            participants=muted_participants,
-            muted_participants=muted_participants,
-            previous_claimer_id=previous_claimer_id,
-            hidden_categories=(previous_category,),
-            visible_reason="Grant new category staff access after ticket transfer execution",
-            hidden_reason="Hide previous category staff after ticket transfer execution",
-        )
-
-    def _resolve_muted_participants(self, channel: Any, ticket_id: str) -> list[Any]:
-        return [
-            member
-            for member in (self._resolve_channel_member(channel, record.user_id) for record in self.ticket_mute_repository.list_by_ticket(ticket_id))
-            if member is not None
-        ]
-
-    @staticmethod
-    def _resolve_channel_member(channel: Any, user_id: int) -> Any | None:
-        guild = getattr(channel, "guild", None)
-        if guild is None:
-            return None
-        get_member = getattr(guild, "get_member", None)
-        if not callable(get_member):
-            return None
-        return get_member(user_id)
-
-    async def _send_transfer_completion_log(
-        self,
-        *,
-        ticket: Any,
-        config: GuildConfigRecord,
-        previous_category_key: str,
-        previous_category: TicketCategoryConfig | None,
-        target_category: TicketCategoryConfig,
-        restored_status: TicketStatus,
-        previous_claimer_id: int | None,
-        executed_at: str,
-        reason: str | None,
-    ) -> bool:
-        if self.logging_service is None:
-            return False
-
-        previous_category_name = previous_category.display_name if previous_category is not None else previous_category_key
-        description = (
-            f"ticket `{ticket.ticket_id}` 已完成跨分类转交："
-            f" `{previous_category_key}` -> `{target_category.category_key}`，"
-            f"并恢复为 {restored_status.value}。"
-        )
-        extra: dict[str, object] = {
-            "previous_category": previous_category_name,
-            "target_category": target_category.display_name,
-            "restored_status": restored_status.value,
-            "executed_at": executed_at,
-        }
-        if previous_claimer_id is not None:
-            extra["previous_claimer_id"] = previous_claimer_id
-        if reason is not None:
-            extra["transfer_reason"] = reason
-
-        return await self.logging_service.send_ticket_log(
-            ticket_id=ticket.ticket_id,
-            guild_id=ticket.guild_id,
-            level="success",
-            title="工单转移已执行",
-            description=description,
-            channel_id=config.log_channel_id,
-            extra=extra,
-        )
-
-    def _append_transfer_history(
-        self,
-        ticket: Any,
-        *,
-        executed_at: str,
-        restored_status: TicketStatus,
-    ) -> str:
-        history = self._parse_transfer_history(getattr(ticket, "transfer_history_json", "[]"))
-        history.append(
-            {
-                "type": "transfer_executed",
-                "from_category_key": ticket.category_key,
-                "to_category_key": getattr(ticket, "transfer_target_category", None),
-                "status_before": getattr(getattr(ticket, "status_before", None), "value", None),
-                "restored_status": restored_status.value,
-                "initiated_by": getattr(ticket, "transfer_initiated_by", None),
-                "reason": getattr(ticket, "transfer_reason", None),
-                "previous_claimer_id": getattr(ticket, "claimed_by", None),
-                "scheduled_execute_at": getattr(ticket, "transfer_execute_at", None),
-                "executed_at": executed_at,
-            }
-        )
-        return json.dumps(history, ensure_ascii=False)
-
-    @staticmethod
-    def _parse_transfer_history(raw_value: str) -> list[dict[str, Any]]:
-        try:
-            data = json.loads(raw_value or "[]")
-        except json.JSONDecodeError:
-            return []
-        if not isinstance(data, list):
-            return []
-        return [item for item in data if isinstance(item, dict)]
-
-    def _build_transfer_execute_at(self, now: datetime | str | None, *, delay_seconds: int = TRANSFER_EXECUTION_DELAY_SECONDS) -> str:
-        reference_time = self._to_utc_datetime(now)
-        return (reference_time + timedelta(seconds=delay_seconds)).isoformat()
-
-    @staticmethod
-    def _is_due_for_execution(ticket: Any, reference_time: datetime) -> bool:
-        execute_at = getattr(ticket, "transfer_execute_at", None)
-        if not execute_at:
-            return False
-        execute_at_datetime = TransferService._parse_iso_datetime(execute_at)
-        return execute_at_datetime <= reference_time
-
-    @staticmethod
-    def _to_utc_datetime(value: datetime | str | None) -> datetime:
-        if value is None:
-            return datetime.now(timezone.utc)
-        if isinstance(value, str):
-            return TransferService._parse_iso_datetime(value)
-        if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
-
-    @staticmethod
-    def _parse_iso_datetime(value: str) -> datetime:
-        parsed = datetime.fromisoformat(value)
-        if parsed.tzinfo is None:
-            return parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
-
-    @staticmethod
-    async def _send_channel_log(channel: Any, *, content: str) -> Any | None:
-        send = getattr(channel, "send", None)
-        if send is None:
-            return None
-        return await send(content=content)
 
     @asynccontextmanager
     async def _acquire_transfer_lock(self, lock_key: str | int) -> AsyncIterator[None]:

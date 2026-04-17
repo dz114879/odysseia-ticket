@@ -21,7 +21,7 @@ These are the current architectural constraints:
 There are two intentional exceptions:
 
 - Draft creation uses `CreationService._build_draft_overwrites()` to create the initial private channel before the ticket enters the active workflow.
-- Close start uses `CloseService._freeze_ticket_permissions()` to force the entire channel into a temporary readonly window before archiving.
+- Close start uses `services/close_permission_support.py` to force the entire channel into a temporary readonly window before archiving.
 
 ## Permission Inputs
 
@@ -71,9 +71,9 @@ This order matters. A later participant or mute overwrite can intentionally narr
 | Claim / transfer-claim / unclaim | `ClaimService._sync_staff_permissions()` | Recompute staff write/read behavior from claim mode and claimer identity. |
 | Sleep / wake | `SleepService._sync_ticket_permissions()` | Recompute staff + creator + muted participant access after the state change. |
 | Mute / unmute / mute expiration | `ModerationService._sync_ticket_permissions()` | Preserve or remove participant send restrictions without rebuilding unrelated workflow state. |
-| Transfer execution | `TransferService._sync_transfer_permissions()` | Show new category staff, hide previous category staff, clear stale claimer access, preserve creator/muted participants. |
-| Close start | `CloseService._freeze_ticket_permissions()` | Force temporary readonly access during the revoke window. This is not a full recomputation. |
-| Close revoke | `CloseService._restore_ticket_permissions()` | Restore the normal active-ticket permission model after leaving `closing`. |
+| Transfer execution | `services/transfer_runtime_support.py` | Show new category staff, hide previous category staff, clear stale claimer access, preserve creator/muted participants. |
+| Close start | `services/close_permission_support.py` | Force temporary readonly access during the revoke window. This is not a full recomputation. |
+| Close revoke | `services/close_permission_support.py` | Restore the normal active-ticket permission model after leaving `closing`. |
 | Config import via `/ticket permission` | `PermissionConfigService.apply_permission_config()` | Updates stored category staff config for future recalculations, but does not immediately push overwrites to already-open ticket channels. |
 
 ## Guard and Validation Layer

@@ -20,11 +20,13 @@ class ClosingNoticeView(discord.ui.View):
         self,
         *,
         close_service,
+        notice_support,
         ticket_id: str,
         timeout: float,
     ) -> None:
         super().__init__(timeout=timeout)
         self.close_service = close_service
+        self.notice_support = notice_support
         self.ticket_id = ticket_id
         self.message: Any | None = None
 
@@ -32,13 +34,10 @@ class ClosingNoticeView(discord.ui.View):
         self.message = message
 
     async def on_timeout(self) -> None:
-        self.close_service._closing_notice_messages.pop(self.ticket_id, None)
-        if self.message is None:
-            return
-        try:
-            await self.message.edit(view=None)
-        except Exception:
-            pass
+        await self.notice_support.expire_notice(
+            self.ticket_id,
+            message=self.message,
+        )
 
     @discord.ui.button(label="⏪ 撤销", style=discord.ButtonStyle.secondary, row=0)
     async def revoke_button(

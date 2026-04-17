@@ -1,20 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 
 from core.constants import CUSTOM_ID_SEPARATOR, STAFF_CUSTOM_ID_PREFIX
 from core.enums import TicketPriority, TicketStatus
-from core.errors import (
-    InvalidTicketStateError,
-    PermissionDeniedError,
-    StaleInteractionError,
-    TicketNotFoundError,
-    ValidationError,
-)
 from discord_ui.close_feedback import build_close_feedback_message
-from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
+from discord_ui.staff_action_executor import assert_current_staff_panel, execute_staff_action, require_bot_resources
 from discord_ui.staff_feedback import (
     build_claim_success_message,
     build_priority_success_message,
@@ -64,28 +57,17 @@ class StaffClaimButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = _require_channel(interaction)
-            _assert_current_staff_panel(interaction, channel=channel)
-            await safe_defer(interaction)
-            claim_service = _build_claim_service(interaction)
-            result = await claim_service.claim_ticket(
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            precheck=assert_current_staff_panel,
+            action=lambda channel, is_bot_owner: _build_claim_service(interaction).claim_ticket(
                 channel,
                 actor=interaction.user,
-                is_bot_owner=await interaction.client.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            StaleInteractionError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await send_ephemeral_text(interaction, build_claim_success_message(result))
+                is_bot_owner=is_bot_owner,
+            ),
+            build_success_message=build_claim_success_message,
+        )
 
 
 class StaffUnclaimButton(discord.ui.Button):
@@ -99,28 +81,17 @@ class StaffUnclaimButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = _require_channel(interaction)
-            _assert_current_staff_panel(interaction, channel=channel)
-            await safe_defer(interaction)
-            claim_service = _build_claim_service(interaction)
-            result = await claim_service.unclaim_ticket(
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            precheck=assert_current_staff_panel,
+            action=lambda channel, is_bot_owner: _build_claim_service(interaction).unclaim_ticket(
                 channel,
                 actor=interaction.user,
-                is_bot_owner=await interaction.client.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            StaleInteractionError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await send_ephemeral_text(interaction, build_unclaim_success_message(result))
+                is_bot_owner=is_bot_owner,
+            ),
+            build_success_message=build_unclaim_success_message,
+        )
 
 
 class StaffSleepButton(discord.ui.Button):
@@ -134,28 +105,17 @@ class StaffSleepButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = _require_channel(interaction)
-            _assert_current_staff_panel(interaction, channel=channel)
-            await safe_defer(interaction)
-            sleep_service = _build_sleep_service(interaction)
-            result = await sleep_service.sleep_ticket(
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            precheck=assert_current_staff_panel,
+            action=lambda channel, is_bot_owner: _build_sleep_service(interaction).sleep_ticket(
                 channel,
                 actor=interaction.user,
-                is_bot_owner=await interaction.client.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            StaleInteractionError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await send_ephemeral_text(interaction, build_sleep_success_message(result))
+                is_bot_owner=is_bot_owner,
+            ),
+            build_success_message=build_sleep_success_message,
+        )
 
 
 class StaffCloseButton(discord.ui.Button):
@@ -169,28 +129,17 @@ class StaffCloseButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = _require_channel(interaction)
-            _assert_current_staff_panel(interaction, channel=channel)
-            await safe_defer(interaction)
-            close_service = _build_close_service(interaction)
-            result = await close_service.initiate_close(
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            precheck=assert_current_staff_panel,
+            action=lambda channel, is_bot_owner: _build_close_service(interaction).initiate_close(
                 channel,
                 actor=interaction.user,
-                is_bot_owner=await interaction.client.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            StaleInteractionError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await send_ephemeral_text(interaction, build_close_feedback_message(result))
+                is_bot_owner=is_bot_owner,
+            ),
+            build_success_message=build_close_feedback_message,
+        )
 
 
 class StaffRenameModal(discord.ui.Modal, title="修改 Ticket 标题"):
@@ -205,27 +154,17 @@ class StaffRenameModal(discord.ui.Modal, title="修改 Ticket 标题"):
         super().__init__()
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = _require_channel(interaction)
-            await safe_defer(interaction)
-            rename_service = _build_rename_service(interaction)
-            result = await rename_service.rename_ticket(
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            action=lambda channel, is_bot_owner: _build_rename_service(interaction).rename_ticket(
                 channel,
                 actor=interaction.user,
                 requested_name=self.name_input.value,
-                is_bot_owner=await interaction.client.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await send_ephemeral_text(interaction, build_rename_success_message(result))
+                is_bot_owner=is_bot_owner,
+            ),
+            build_success_message=build_rename_success_message,
+        )
 
 
 class StaffRenameButton(discord.ui.Button):
@@ -239,14 +178,14 @@ class StaffRenameButton(discord.ui.Button):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            _require_channel(interaction)
-            _assert_current_staff_panel(interaction)
-        except (StaleInteractionError, ValidationError) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await interaction.response.send_modal(StaffRenameModal())
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            precheck=assert_current_staff_panel,
+            defer=False,
+            resolve_owner=False,
+            action=lambda _channel, _is_bot_owner: interaction.response.send_modal(StaffRenameModal()),
+        )
 
 
 class StaffPrioritySelect(discord.ui.Select):
@@ -262,29 +201,18 @@ class StaffPrioritySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
-        try:
-            channel = _require_channel(interaction)
-            _assert_current_staff_panel(interaction, channel=channel)
-            await safe_defer(interaction)
-            priority_service = _build_priority_service(interaction)
-            result = await priority_service.set_priority(
+        await execute_staff_action(
+            interaction,
+            context_label="交互",
+            precheck=assert_current_staff_panel,
+            action=lambda channel, is_bot_owner: _build_priority_service(interaction).set_priority(
                 channel,
                 actor=interaction.user,
                 priority=TicketPriority(self.values[0]),
-                is_bot_owner=await interaction.client.is_owner(interaction.user),
-            )
-        except (
-            TicketNotFoundError,
-            InvalidTicketStateError,
-            StaleInteractionError,
-            PermissionDeniedError,
-            ValidationError,
-            discord.HTTPException,
-        ) as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        await send_ephemeral_text(interaction, build_priority_success_message(result))
+                is_bot_owner=is_bot_owner,
+            ),
+            build_success_message=build_priority_success_message,
+        )
 
 
 class StaffPanelView(discord.ui.View):
@@ -322,7 +250,7 @@ def _build_claim_service(interaction: discord.Interaction) -> ClaimService:
     from services.claim_service import ClaimService
     from services.staff_panel_service import StaffPanelService
 
-    resources = _require_resources(interaction)
+    resources = require_bot_resources(interaction)
     staff_panel_service = StaffPanelService(
         resources.database,
         bot=interaction.client,
@@ -339,7 +267,7 @@ def _build_priority_service(interaction: discord.Interaction) -> PriorityService
     from services.priority_service import PriorityService
     from services.staff_panel_service import StaffPanelService
 
-    resources = _require_resources(interaction)
+    resources = require_bot_resources(interaction)
     staff_panel_service = StaffPanelService(
         resources.database,
         bot=interaction.client,
@@ -353,7 +281,7 @@ def _build_priority_service(interaction: discord.Interaction) -> PriorityService
 
 
 def _build_sleep_service(interaction: discord.Interaction) -> SleepService:
-    resources = _require_resources(interaction)
+    resources = require_bot_resources(interaction)
     existing = getattr(resources, "sleep_service", None)
     if existing is not None:
         return existing
@@ -373,7 +301,7 @@ def _build_sleep_service(interaction: discord.Interaction) -> SleepService:
 
 
 def _build_close_service(interaction: discord.Interaction) -> CloseService:
-    resources = _require_resources(interaction)
+    resources = require_bot_resources(interaction)
     existing = getattr(resources, "close_service", None)
     if existing is not None:
         return existing
@@ -389,46 +317,8 @@ def _build_close_service(interaction: discord.Interaction) -> CloseService:
 def _build_rename_service(interaction: discord.Interaction) -> RenameService:
     from services.rename_service import RenameService
 
-    resources = _require_resources(interaction)
+    resources = require_bot_resources(interaction)
     return RenameService(
         resources.database,
         lock_manager=getattr(resources, "lock_manager", None),
     )
-
-
-def _require_resources(interaction: discord.Interaction) -> Any:
-    client = getattr(interaction, "client", None)
-    resources = getattr(client, "resources", None)
-    if resources is None:
-        raise RuntimeError("Bot resources 尚未初始化，无法处理 staff panel 交互。")
-    return resources
-
-
-def _require_channel(interaction: discord.Interaction) -> Any:
-    if interaction.guild is None:
-        raise ValidationError("该交互只能在服务器中使用。")
-    channel = interaction.channel
-    if channel is None or getattr(channel, "guild", None) is None:
-        raise ValidationError("当前频道不支持 staff ticket 操作。")
-    return channel
-
-
-def _assert_current_staff_panel(interaction: discord.Interaction, *, channel: Any | None = None) -> None:
-    resolved_channel = channel or _require_channel(interaction)
-    message = getattr(interaction, "message", None)
-    message_id = getattr(message, "id", None)
-    if message_id is None:
-        raise ValidationError("无法识别当前 staff 控制面板消息，请稍后重试。")
-
-    service = _build_staff_panel_service(interaction)
-    service.assert_current_panel_interaction(
-        channel_id=getattr(resolved_channel, "id", 0),
-        message_id=message_id,
-    )
-
-
-def _build_staff_panel_service(interaction: discord.Interaction):
-    from services.staff_panel_service import StaffPanelService
-
-    resources = _require_resources(interaction)
-    return StaffPanelService(resources.database, bot=interaction.client)

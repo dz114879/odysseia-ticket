@@ -41,6 +41,8 @@ Out of scope:
 - `discord_ui/close_embeds.py`
 - `discord_ui/close_feedback.py`
 - `services/close_service.py`
+- `services/close_notice_support.py`
+- `services/close_permission_support.py`
 - `services/close_request_service.py`
 - `services/archive_service.py`
 - `services/archive_render_service.py`
@@ -99,7 +101,7 @@ Once direct close starts, the ticket enters `closing`.
    - `close_initiated_by`
    - `close_execute_at`
    - `closed_at`
-5. Freezes the channel into readonly mode through `_freeze_ticket_permissions()`.
+5. Freezes the channel into readonly mode through `services/close_permission_support.py`.
 6. Posts a closing notice embed with `ClosingNoticeView`.
 7. Requests staff panel refresh.
 

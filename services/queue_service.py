@@ -39,6 +39,12 @@ class _QueueResolutionResult:
     outcome: str
 
 
+@dataclass(frozen=True, slots=True)
+class _QueueCandidateProcessResult:
+    action: str
+    ticket: TicketRecord | None = None
+
+
 class QueueService:
     def __init__(
         self,
@@ -147,121 +153,30 @@ class QueueService:
             return None
 
         queued_tickets = self.ticket_repository.list_queued_by_guild(guild_id)
+        log_channel_id = getattr(config, "log_channel_id", None)
         abandoned_ticket: TicketRecord | None = None
         abandoned_position: int | None = None
 
         for position, ticket in enumerate(queued_tickets, start=1):
-            channel_resolution = await self._resolve_channel(ticket.channel_id)
-            if channel_resolution.outcome == "deferred":
-                self.logger.warning(
-                    "Queued ticket promotion deferred because source channel could not be resolved yet. ticket_id=%s channel_id=%s",
-                    ticket.ticket_id,
-                    ticket.channel_id,
-                )
-                await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
-                    f"排队 ticket 推进延迟：无法解析频道 {ticket.channel_id}",
-                    log_channel_id=getattr(config, "log_channel_id", None),
-                )
-                return self._build_abandoned_result(abandoned_ticket, abandoned_position)
-
-            channel = channel_resolution.value
-            if channel is None:
-                abandoned_ticket = self._mark_abandoned(
-                    ticket,
-                    reason="source channel is unavailable while promoting queued ticket",
-                )
-                abandoned_position = position
-                await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "排队工单已废弃",
-                    f"排队 ticket 已废弃：频道不存在 (channel_id={ticket.channel_id})",
-                    log_channel_id=getattr(config, "log_channel_id", None),
-                )
-                continue
-
-            guild = getattr(channel, "guild", None)
-            creator_resolution = await self._resolve_guild_member(guild, ticket.creator_id)
-            if creator_resolution.outcome == "deferred":
-                self.logger.warning(
-                    "Queued ticket promotion deferred because creator could not be resolved yet. ticket_id=%s creator_id=%s",
-                    ticket.ticket_id,
-                    ticket.creator_id,
-                )
-                await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
-                    f"排队 ticket 推进延迟：无法解析创建者 (creator_id={ticket.creator_id})",
-                    log_channel_id=getattr(config, "log_channel_id", None),
-                )
-                return self._build_abandoned_result(abandoned_ticket, abandoned_position)
-
-            if creator_resolution.value is None:
-                channel_deleted = await self._try_delete_channel(
-                    channel,
-                    reason=f"Abandon queued ticket {ticket.ticket_id} because creator is unavailable",
-                )
-                if not channel_deleted:
-                    self.logger.warning(
-                        "Queued ticket cleanup deferred because creator is unavailable but channel deletion failed. ticket_id=%s channel_id=%s",
-                        ticket.ticket_id,
-                        ticket.channel_id,
-                    )
-                    await self._send_ticket_log(
-                        ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
-                        f"排队 ticket 推进延迟：创建者不可用，且频道删除失败，将在后续 queue sweep 重试清理 (creator_id={ticket.creator_id})",
-                        log_channel_id=getattr(config, "log_channel_id", None),
-                    )
-                    return self._build_abandoned_result(abandoned_ticket, abandoned_position)
-
-                abandoned_ticket = self._mark_abandoned(
-                    ticket,
-                    reason="creator is unavailable while promoting queued ticket",
-                )
-                abandoned_position = position
-                await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "排队工单已废弃",
-                    f"排队 ticket 已废弃：创建者不可用 (creator_id={ticket.creator_id})",
-                    log_channel_id=getattr(config, "log_channel_id", None),
-                )
-                continue
-
-            submit_service = self._build_submit_service()
-            try:
-                result = await submit_service.promote_queued_ticket(
-                    channel,
-                    ticket_id=ticket.ticket_id,
-                )
-            except ValidationError:
-                self.logger.warning(
-                    "Queued ticket promotion is deferred because validation failed. ticket_id=%s",
-                    ticket.ticket_id,
-                    exc_info=True,
-                )
-                await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "队列提升已延迟",
-                    "排队 ticket 推进延迟：验证失败。",
-                    log_channel_id=getattr(config, "log_channel_id", None),
-                )
-                return None
-            except Exception as exc:
-                self.logger.exception(
-                    "Failed to promote queued ticket. ticket_id=%s",
-                    ticket.ticket_id,
-                )
-                await self._send_ticket_log(
-                    ticket.ticket_id, guild_id, "warning", "队列提升失败",
-                    f"排队 ticket 推进失败：{exc}",
-                    log_channel_id=getattr(config, "log_channel_id", None),
-                )
-                return None
-
-            if result is None:
-                return None
-
-            return QueueProcessResult(
-                ticket=result.ticket,
-                action="promoted",
-                position=position,
+            candidate_result = await self._process_candidate_ticket(
+                ticket,
+                guild_id=guild_id,
+                log_channel_id=log_channel_id,
             )
+            if candidate_result.action == "promoted":
+                return QueueProcessResult(
+                    ticket=candidate_result.ticket or ticket,
+                    action="promoted",
+                    position=position,
+                )
+            if candidate_result.action == "abandoned":
+                abandoned_ticket = candidate_result.ticket
+                abandoned_position = position
+                continue
+            if candidate_result.action == "deferred":
+                return self._build_abandoned_result(abandoned_ticket, abandoned_position)
+            if candidate_result.action == "halted":
+                return None
 
         if abandoned_ticket is not None:
             return QueueProcessResult(
@@ -270,6 +185,167 @@ class QueueService:
                 position=abandoned_position,
             )
         return None
+
+    async def _process_candidate_ticket(
+        self,
+        ticket: TicketRecord,
+        *,
+        guild_id: int,
+        log_channel_id: int | None,
+    ) -> _QueueCandidateProcessResult:
+        channel_resolution = await self._resolve_channel(ticket.channel_id)
+        if channel_resolution.outcome == "deferred":
+            self.logger.warning(
+                "Queued ticket promotion deferred because source channel could not be resolved yet. ticket_id=%s channel_id=%s",
+                ticket.ticket_id,
+                ticket.channel_id,
+            )
+            await self._send_ticket_log(
+                ticket.ticket_id,
+                guild_id,
+                "warning",
+                "队列提升已延迟",
+                f"排队 ticket 推进延迟：无法解析频道 {ticket.channel_id}",
+                log_channel_id=log_channel_id,
+            )
+            return _QueueCandidateProcessResult(action="deferred")
+
+        channel = channel_resolution.value
+        if channel is None:
+            return await self._handle_missing_channel(
+                ticket,
+                guild_id=guild_id,
+                log_channel_id=log_channel_id,
+            )
+
+        guild = getattr(channel, "guild", None)
+        creator_resolution = await self._resolve_guild_member(guild, ticket.creator_id)
+        if creator_resolution.outcome == "deferred":
+            self.logger.warning(
+                "Queued ticket promotion deferred because creator could not be resolved yet. ticket_id=%s creator_id=%s",
+                ticket.ticket_id,
+                ticket.creator_id,
+            )
+            await self._send_ticket_log(
+                ticket.ticket_id,
+                guild_id,
+                "warning",
+                "队列提升已延迟",
+                f"排队 ticket 推进延迟：无法解析创建者 (creator_id={ticket.creator_id})",
+                log_channel_id=log_channel_id,
+            )
+            return _QueueCandidateProcessResult(action="deferred")
+
+        if creator_resolution.value is None:
+            return await self._handle_missing_creator(
+                ticket,
+                channel=channel,
+                guild_id=guild_id,
+                log_channel_id=log_channel_id,
+            )
+
+        submit_service = self._build_submit_service()
+        try:
+            result = await submit_service.promote_queued_ticket(
+                channel,
+                ticket_id=ticket.ticket_id,
+            )
+        except ValidationError:
+            self.logger.warning(
+                "Queued ticket promotion is deferred because validation failed. ticket_id=%s",
+                ticket.ticket_id,
+                exc_info=True,
+            )
+            await self._send_ticket_log(
+                ticket.ticket_id,
+                guild_id,
+                "warning",
+                "队列提升已延迟",
+                "排队 ticket 推进延迟：验证失败。",
+                log_channel_id=log_channel_id,
+            )
+            return _QueueCandidateProcessResult(action="halted")
+        except Exception as exc:
+            self.logger.exception(
+                "Failed to promote queued ticket. ticket_id=%s",
+                ticket.ticket_id,
+            )
+            await self._send_ticket_log(
+                ticket.ticket_id,
+                guild_id,
+                "warning",
+                "队列提升失败",
+                f"排队 ticket 推进失败：{exc}",
+                log_channel_id=log_channel_id,
+            )
+            return _QueueCandidateProcessResult(action="halted")
+
+        if result is None:
+            return _QueueCandidateProcessResult(action="halted")
+        return _QueueCandidateProcessResult(action="promoted", ticket=result.ticket)
+
+    async def _handle_missing_channel(
+        self,
+        ticket: TicketRecord,
+        *,
+        guild_id: int,
+        log_channel_id: int | None,
+    ) -> _QueueCandidateProcessResult:
+        abandoned_ticket = self._mark_abandoned(
+            ticket,
+            reason="source channel is unavailable while promoting queued ticket",
+        )
+        await self._send_ticket_log(
+            ticket.ticket_id,
+            guild_id,
+            "warning",
+            "排队工单已废弃",
+            f"排队 ticket 已废弃：频道不存在 (channel_id={ticket.channel_id})",
+            log_channel_id=log_channel_id,
+        )
+        return _QueueCandidateProcessResult(action="abandoned", ticket=abandoned_ticket)
+
+    async def _handle_missing_creator(
+        self,
+        ticket: TicketRecord,
+        *,
+        channel: Any,
+        guild_id: int,
+        log_channel_id: int | None,
+    ) -> _QueueCandidateProcessResult:
+        channel_deleted = await self._try_delete_channel(
+            channel,
+            reason=f"Abandon queued ticket {ticket.ticket_id} because creator is unavailable",
+        )
+        if not channel_deleted:
+            self.logger.warning(
+                "Queued ticket cleanup deferred because creator is unavailable but channel deletion failed. ticket_id=%s channel_id=%s",
+                ticket.ticket_id,
+                ticket.channel_id,
+            )
+            await self._send_ticket_log(
+                ticket.ticket_id,
+                guild_id,
+                "warning",
+                "队列提升已延迟",
+                f"排队 ticket 推进延迟：创建者不可用，且频道删除失败，将在后续 queue sweep 重试清理 (creator_id={ticket.creator_id})",
+                log_channel_id=log_channel_id,
+            )
+            return _QueueCandidateProcessResult(action="deferred")
+
+        abandoned_ticket = self._mark_abandoned(
+            ticket,
+            reason="creator is unavailable while promoting queued ticket",
+        )
+        await self._send_ticket_log(
+            ticket.ticket_id,
+            guild_id,
+            "warning",
+            "排队工单已废弃",
+            f"排队 ticket 已废弃：创建者不可用 (creator_id={ticket.creator_id})",
+            log_channel_id=log_channel_id,
+        )
+        return _QueueCandidateProcessResult(action="abandoned", ticket=abandoned_ticket)
 
     @staticmethod
     def _build_abandoned_result(

@@ -9,14 +9,10 @@ from discord.ext import commands
 
 from cogs.ticket_command_groups import ticket_group
 from core.enums import TicketPriority
-from core.errors import (
-    InvalidTicketStateError,
-    PermissionDeniedError,
-    TicketNotFoundError,
-    ValidationError,
-)
+from core.errors import ValidationError
 from discord_ui.help_text import build_ticket_help_message
-from discord_ui.interaction_helpers import safe_defer, send_ephemeral_text
+from discord_ui.interaction_helpers import send_ephemeral_text
+from discord_ui.staff_action_executor import execute_staff_action, require_guild_context
 from discord_ui.staff_feedback import (
     build_claim_success_message,
     build_mute_success_message,
@@ -37,15 +33,6 @@ from services.rename_service import RenameService
 from services.sleep_service import SleepService
 from services.staff_panel_service import StaffPanelService
 from services.transfer_service import TransferService
-
-
-STAFF_INTERACTION_EXCEPTIONS = (
-    TicketNotFoundError,
-    InvalidTicketStateError,
-    PermissionDeniedError,
-    ValidationError,
-    discord.HTTPException,
-)
 
 
 class StaffCog(commands.Cog):
@@ -451,7 +438,7 @@ class StaffCog(commands.Cog):
 
     async def show_ticket_help(self, interaction: discord.Interaction) -> None:
         try:
-            self._require_guild_context(interaction)
+            require_guild_context(interaction, context_label="命令")
         except ValidationError as exc:
             await send_ephemeral_text(interaction, str(exc))
             return
@@ -471,31 +458,14 @@ class StaffCog(commands.Cog):
         log_result: Callable[[Any], None],
         build_feedback: Callable[[Any], str],
     ) -> None:
-        try:
-            channel = self._require_ticket_channel(interaction)
-            await safe_defer(interaction)
-            result = await action(channel, await self.bot.is_owner(interaction.user))
-        except STAFF_INTERACTION_EXCEPTIONS as exc:
-            await send_ephemeral_text(interaction, str(exc))
-            return
-
-        log_result(result)
-        await send_ephemeral_text(interaction, build_feedback(result))
-
-    @staticmethod
-    def _require_ticket_channel(interaction: discord.Interaction) -> Any:
-        if interaction.guild is None:
-            raise ValidationError("该命令只能在服务器中使用。")
-        channel = interaction.channel
-        if channel is None or getattr(channel, "guild", None) is None:
-            raise ValidationError("当前频道不支持 staff ticket 操作。")
-        return channel
-
-    @staticmethod
-    def _require_guild_context(interaction: discord.Interaction) -> Any:
-        if interaction.guild is None:
-            raise ValidationError("该命令只能在服务器中使用。")
-        return interaction.channel
+        await execute_staff_action(
+            interaction,
+            context_label="命令",
+            action=action,
+            on_success=log_result,
+            build_success_message=build_feedback,
+            owner_resolver=lambda _interaction: self.bot.is_owner(interaction.user),
+        )
 
 
 async def setup(bot: commands.Bot) -> None:
