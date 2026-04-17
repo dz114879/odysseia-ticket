@@ -10,6 +10,7 @@ Start here when you need orientation:
 |---|----------|-------------|
 | 01 | [Deployment Guide](01-deployment.md) | How to create a Discord app/bot, configure intents and permissions, and run the bot |
 | 02 | [Command and Source Map](02-command-source-map.md) | Quick reference for slash commands, UI entry points, event listeners, and their owning files |
+| 03 | [Authorization and Access Control](03-authorization-and-access-control.md) | Identity sources, command authorization, and ticket access rules |
 | 10 | [Architecture Overview](10-architecture/10-overview.md) | Startup path, layer boundaries, source ownership, and documentation rules |
 | 11 | [Ticket Lifecycle](10-architecture/11-ticket-lifecycle.md) | State transitions, entry and exit paths, and lifecycle invariants |
 | 12 | [Permission Model](10-architecture/12-permission-model.md) | How ticket access is derived, recalculated, and guarded |
