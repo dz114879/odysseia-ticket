@@ -10,6 +10,7 @@ from core.models import GuildConfigRecord
 from db.repositories.guild_repository import GuildRepository
 from discord_ui.config_views import (
     BasicSettingsModal,
+    ConfigCategorySelect,
     DraftWelcomeTextModal,
     PanelTextModal,
     SnapshotTextModal,
@@ -18,12 +19,25 @@ from discord_ui.config_views import (
 from tests.helpers.discord_fakes import FakeClient, FakeInteraction
 
 
-def build_interaction(migrated_database) -> FakeInteraction:
+class FakeLoggingService:
+    def __init__(self) -> None:
+        self.info_messages: list[str] = []
+        self.warning_messages: list[str] = []
+
+    def log_local_info(self, message: str, *args) -> None:
+        self.info_messages.append(message % args if args else message)
+
+    def log_local_warning(self, message: str, *args, **kwargs) -> None:
+        self.warning_messages.append(message % args if args else message)
+
+
+def build_interaction(migrated_database, *, logging_service: FakeLoggingService | None = None) -> FakeInteraction:
     return FakeInteraction(
+        user=SimpleNamespace(id=42),
         client=FakeClient(
             resources=SimpleNamespace(
                 database=migrated_database,
-                logging_service=SimpleNamespace(),
+                logging_service=logging_service or FakeLoggingService(),
             )
         )
     )
@@ -69,6 +83,25 @@ def test_basic_settings_modal_uses_selects_for_fixed_options(migrated_database) 
     assert isinstance(modal.download_window_select, discord.ui.Select)
     assert [option.value for option in modal.claim_mode_select.options if option.default] == ["strict"]
     assert [option.value for option in modal.download_window_select.options if option.default] == ["false"]
+    payload = modal.to_dict()
+    assert payload["components"][2]["type"] == 18
+    assert payload["components"][2]["component"]["type"] == 3
+    assert payload["components"][3]["type"] == 18
+    assert payload["components"][3]["component"]["type"] == 3
+
+
+@pytest.mark.asyncio
+async def test_config_category_select_opens_basic_modal_and_logs(migrated_database) -> None:
+    logging_service = FakeLoggingService()
+    interaction = build_interaction(migrated_database, logging_service=logging_service)
+    select = ConfigCategorySelect(guild_id=1, config=seed_config(migrated_database))
+    select._values = ["basic"]
+
+    await select.callback(interaction)
+
+    assert interaction.response.modals
+    assert isinstance(interaction.response.modals[0], BasicSettingsModal)
+    assert logging_service.info_messages == ["Ticket config category selected. guild_id=1 user_id=42 category=basic"]
 
 
 def test_panel_text_modal_prefills_merged_legacy_body(migrated_database) -> None:

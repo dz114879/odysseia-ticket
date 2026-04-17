@@ -65,6 +65,7 @@ class FakeResponse:
     def __init__(self) -> None:
         self.messages: list[dict[str, object]] = []
         self.deferred: list[dict[str, object]] = []
+        self.modals: list[object] = []
         self._done = False
 
     def is_done(self) -> bool:
@@ -80,6 +81,10 @@ class FakeResponse:
         if thinking is not None:
             payload["thinking"] = thinking
         self.deferred.append(payload)
+
+    async def send_modal(self, modal) -> None:
+        self._done = True
+        self.modals.append(modal)
 
 
 class FakeFollowup:

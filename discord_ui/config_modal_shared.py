@@ -27,6 +27,39 @@ def build_guild_repository(interaction: discord.Interaction) -> GuildRepository:
     return GuildRepository(require_resources(interaction).database)
 
 
+def get_logging_service(interaction: discord.Interaction) -> Any | None:
+    client = getattr(interaction, "client", None)
+    resources = getattr(client, "resources", None)
+    return getattr(resources, "logging_service", None)
+
+
+def log_config_info(interaction: discord.Interaction, message: str, *args: Any) -> None:
+    logging_service = get_logging_service(interaction)
+    if logging_service is None:
+        return
+    log_local_info = getattr(logging_service, "log_local_info", None)
+    if callable(log_local_info):
+        log_local_info(message, *args)
+
+
+def log_config_warning(
+    interaction: discord.Interaction,
+    message: str,
+    *args: Any,
+    exc_info: BaseException | bool | None = None,
+) -> None:
+    logging_service = get_logging_service(interaction)
+    if logging_service is None:
+        return
+    log_local_warning = getattr(logging_service, "log_local_warning", None)
+    if callable(log_local_warning):
+        kwargs = {"exc_info": exc_info} if exc_info is not None else {}
+        try:
+            log_local_warning(message, *args, **kwargs)
+        except TypeError:
+            log_local_warning(message, *args)
+
+
 async def refresh_panel_if_needed(interaction: discord.Interaction, guild_id: int) -> None:
     try:
         from services.panel_service import PanelService
@@ -64,6 +97,13 @@ async def apply_config_updates(
         await send_ephemeral_text(interaction, "未检测到变更。")
         return
     repo.update_config(guild_id, **updates)
+    log_config_info(
+        interaction,
+        "Ticket config updated. guild_id=%s user_id=%s updated=%s",
+        guild_id,
+        getattr(getattr(interaction, "user", None), "id", None),
+        sorted(updates),
+    )
     if refresh_panel:
         await refresh_panel_if_needed(interaction, guild_id)
     await send_ephemeral_text(interaction, format_changes(updates, labels))

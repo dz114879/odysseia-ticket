@@ -9,6 +9,7 @@ from discord_ui.config_setting_modals import (
     DraftTimeoutModal,
     SnapshotLimitsModal,
 )
+from discord_ui.config_modal_shared import log_config_info, log_config_warning
 from discord_ui.config_text_modals import (
     DraftWelcomeTextModal,
     PanelTextModal,
@@ -40,19 +41,37 @@ class ConfigCategorySelect(discord.ui.Select):
             "snapshot": SnapshotLimitsModal,
         }
         choice = self.values[0]
-        if choice in modal_map:
-            await interaction.response.send_modal(modal_map[choice](guild_id=self.guild_id, config=self.config))
-            return
-
-        await send_ephemeral_message(
+        log_config_info(
             interaction,
-            embed=discord.Embed(
-                title="✏️ 文案设置",
-                description="请选择要修改的文案类别。提交后留空的字段将恢复为默认值。",
-                color=discord.Color.blue(),
-            ),
-            view=TextGroupView(guild_id=self.guild_id, config=self.config),
+            "Ticket config category selected. guild_id=%s user_id=%s category=%s",
+            self.guild_id,
+            getattr(getattr(interaction, "user", None), "id", None),
+            choice,
         )
+        try:
+            if choice in modal_map:
+                await interaction.response.send_modal(modal_map[choice](guild_id=self.guild_id, config=self.config))
+                return
+
+            await send_ephemeral_message(
+                interaction,
+                embed=discord.Embed(
+                    title="✏️ 文案设置",
+                    description="请选择要修改的文案类别。提交后留空的字段将恢复为默认值。",
+                    color=discord.Color.blue(),
+                ),
+                view=TextGroupView(guild_id=self.guild_id, config=self.config),
+            )
+        except Exception as exc:
+            log_config_warning(
+                interaction,
+                "Ticket config category selection failed. guild_id=%s user_id=%s category=%s",
+                self.guild_id,
+                getattr(getattr(interaction, "user", None), "id", None),
+                choice,
+                exc_info=exc,
+            )
+            raise
 
 
 class ConfigPanelView(discord.ui.View):
@@ -80,9 +99,28 @@ class TextGroupSelect(discord.ui.Select):
             "draft_welcome": DraftWelcomeTextModal,
             "snapshot_text": SnapshotTextModal,
         }
-        modal_cls = modal_map.get(self.values[0])
-        if modal_cls is not None:
-            await interaction.response.send_modal(modal_cls(guild_id=self.guild_id, config=self.config))
+        choice = self.values[0]
+        log_config_info(
+            interaction,
+            "Ticket config text group selected. guild_id=%s user_id=%s group=%s",
+            self.guild_id,
+            getattr(getattr(interaction, "user", None), "id", None),
+            choice,
+        )
+        try:
+            modal_cls = modal_map.get(choice)
+            if modal_cls is not None:
+                await interaction.response.send_modal(modal_cls(guild_id=self.guild_id, config=self.config))
+        except Exception as exc:
+            log_config_warning(
+                interaction,
+                "Ticket config text group selection failed. guild_id=%s user_id=%s group=%s",
+                self.guild_id,
+                getattr(getattr(interaction, "user", None), "id", None),
+                choice,
+                exc_info=exc,
+            )
+            raise
 
 
 class TextGroupView(discord.ui.View):

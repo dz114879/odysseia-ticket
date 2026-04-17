@@ -59,7 +59,8 @@ class FakeGuild:
 
 class FakeBot:
     def __init__(self, migrated_database, *, is_owner: bool = False) -> None:
-        self.resources = SimpleNamespace(database=migrated_database)
+        self.logging_service = FakeLoggingService()
+        self.resources = SimpleNamespace(database=migrated_database, logging_service=self.logging_service)
         self._is_owner = is_owner
 
     async def is_owner(self, user) -> bool:
@@ -72,6 +73,14 @@ class FakeInteraction:
         self.user = user
         self.response = FakeResponse()
         self.followup = FakeFollowup()
+
+
+class FakeLoggingService:
+    def __init__(self) -> None:
+        self.info_messages: list[str] = []
+
+    def log_local_info(self, message: str, *args) -> None:
+        self.info_messages.append(message % args if args else message)
 
 
 # ---------------------------------------------------------------------------
@@ -186,3 +195,4 @@ async def test_run_config_success(migrated_database) -> None:
     assert msg["embed"] is not None
     assert msg["view"] is not None
     assert msg["content"] is None
+    assert cog.logging_service.info_messages == ["Ticket config panel opened. guild_id=1 user_id=42"]

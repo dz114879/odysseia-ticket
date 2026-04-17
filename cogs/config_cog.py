@@ -21,6 +21,7 @@ class ConfigCog(commands.Cog):
 
         self.bot = bot
         self.guild_config_service = GuildConfigService(resources.database)
+        self.logging_service = getattr(resources, "logging_service", None)
 
     async def cog_load(self) -> None:
         self.config_command.binding = self
@@ -56,6 +57,13 @@ class ConfigCog(commands.Cog):
             color=discord.Color.blue(),
         )
         embed.set_footer(text=f"当前时区: {config.timezone} | 活跃上限: {config.max_open_tickets} | 认领模式: {config.claim_mode.value}")
+
+        if self.logging_service is not None:
+            self.logging_service.log_local_info(
+                "Ticket config panel opened. guild_id=%s user_id=%s",
+                guild.id,
+                interaction.user.id,
+            )
 
         view = ConfigPanelView(guild_id=guild.id, config=config)
         await send_ephemeral_message(interaction, embed=embed, view=view)
